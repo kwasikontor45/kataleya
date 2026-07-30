@@ -1,0 +1,148 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Recovery Routine//Mental Health & Sobriety//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Recovery Routine
+X-WR-TIMEZONE:America/New_York
+X-WR-CALDESC:Daily mental health and sobriety recovery schedule
+
+BEGIN:VTIMEZONE
+TZID:America/New_York
+BEGIN:STANDARD
+DTSTART:19671029T020000
+RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+TZNAME:EST
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19870405T020000
+RRULE:FREQ=YEARLY;BYDAY=2SU;BYMONTH=3
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+TZNAME:EDT
+END:DAYLIGHT
+END:VTIMEZONE
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T070000
+DTEND;TZID=America/New_York:20260330T071500
+RRULE:FREQ=DAILY
+SUMMARY:🌅 Wake Up — Hydrate & Stretch
+DESCRIPTION:Wake up at the same time every day.\n\nOn waking:\n• Drink a full glass of water before anything else\n• 5–10 min gentle stretch or short walk outside\n\nThis anchors your circadian rhythm and supports mood regulation.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T073000
+DTEND;TZID=America/New_York:20260330T080000
+RRULE:FREQ=DAILY
+SUMMARY:🍳 Healthy Breakfast
+DESCRIPTION:Eat breakfast — do not skip.\n\nBlood sugar stability directly supports mood and reduces cravings. Aim for protein + complex carbs.\n\nStay off your phone during this time if possible.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T080000
+DTEND;TZID=America/New_York:20260330T083000
+RRULE:FREQ=DAILY
+SUMMARY:📓 Morning Journal + Meditation
+DESCRIPTION:Morning check-in — complete before looking at your phone.\n\nJournal prompts:\n1. How am I feeling physically and emotionally?\n2. What is my intention for today?\n3. What am I grateful for right now?\n4. Is there anything I'm dreading? How can I prepare?\n\nFollow with 10 min of meditation (Insight Timer or Headspace).
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T100000
+DTEND;TZID=America/New_York:20260330T113000
+RRULE:FREQ=DAILY
+SUMMARY:🧠 TREATMENT BLOCK (Do Not Cancel)
+DESCRIPTION:Your daily treatment block — treat this like an appointment you cannot miss.\n\nRotate through these each day:\n• CBT workbook exercises (Mind Over Mood)\n• Sobriety app check-in (I Am Sober / Sober Grid)\n• Recovery reading (This Naked Mind, AA Big Book)\n• Telehealth therapy session (1–2x per week)\n• Skill-building or journaling\n\nThis is the core of your at-home program.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T120000
+DTEND;TZID=America/New_York:20260330T130000
+RRULE:FREQ=DAILY
+SUMMARY:🚶 Lunch + Walk Outside
+DESCRIPTION:Eat a proper lunch, then take a 20–30 minute walk outside.\n\nPhysical movement directly regulates dopamine — the same neurotransmitter disrupted by substance use. Sunlight and fresh air support serotonin production.\n\nNo screens during your walk if possible.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T170000
+DTEND;TZID=America/New_York:20260330T173000
+RRULE:FREQ=DAILY
+SUMMARY:📞 Daily Connection Check-In
+DESCRIPTION:⚠️ IMPORTANT: Late afternoon is a peak craving and low-mood window.\n\nCall or text your:\n• Sponsor\n• Accountability friend\n• Trusted family member\n\nEven a 5-minute check-in significantly reduces relapse risk. You do not have to be struggling to reach out — connection is the treatment.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T173000
+DTEND;TZID=America/New_York:20260330T190000
+RRULE:FREQ=DAILY
+SUMMARY:🤝 Support Group Meeting
+DESCRIPTION:Attend a daily meeting — many are now available online.\n\nOptions:\n• AA (Alcoholics Anonymous) — aa.org\n• NA (Narcotics Anonymous) — na.org\n• SMART Recovery — smartrecovery.org (secular/evidence-based)\n• Refuge Recovery — refugerecovery.org\n\nSearch "online AA meetings today" for real-time options.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T190000
+DTEND;TZID=America/New_York:20260330T193000
+RRULE:FREQ=DAILY
+SUMMARY:🍽 Dinner (No Screens)
+DESCRIPTION:Eat dinner at the table — not in front of the TV or phone.\n\nMindful eating without screens supports nervous system regulation and helps you stay present. Notice how your food tastes. This is a small act of self-care.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T203000
+DTEND;TZID=America/New_York:20260330T210000
+RRULE:FREQ=DAILY
+SUMMARY:🌙 Evening Journal + Sobriety Check-In
+DESCRIPTION:⚠️ IMPORTANT: Late night is the second peak craving window. This ritual protects it.\n\nEvening journal prompts:\n1. What went well today? What am I proud of?\n2. Where did I struggle? What triggered difficult feelings?\n3. How did I respond — and what could I do differently tomorrow?\n4. What do I need tomorrow?\n\nUpdate your sobriety app before bed.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T210000
+DTEND;TZID=America/New_York:20260330T213000
+RRULE:FREQ=DAILY
+SUMMARY:📵 Screens Off — Wind Down
+DESCRIPTION:No screens after 9:00 PM.\n\nWind-down options:\n• Read (recovery literature or fiction — not news)\n• Gentle stretching or yoga\n• Quiet music or nature sounds\n• Prepare tomorrow's clothes / space\n\nBlue light from screens suppresses melatonin and disrupts the sleep needed for mental health and recovery.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260330T220000
+DTEND;TZID=America/New_York:20260330T223000
+RRULE:FREQ=DAILY
+SUMMARY:😴 Sleep — Same Time Every Night
+DESCRIPTION:Lights out by 10:00 PM.\n\nSleep is non-negotiable in recovery. Aim for 7–9 hours.\n\n• Consistent sleep time regulates cortisol and dopamine\n• Poor sleep is one of the strongest predictors of relapse\n• If you can't sleep, practice 4-7-8 breathing: inhale 4 counts, hold 7, exhale 8\n\nYou showed up today. That matters.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260405T100000
+DTEND;TZID=America/New_York:20260405T103000
+RRULE:FREQ=WEEKLY;BYDAY=SU
+SUMMARY:📋 Weekly Review — Sunday Reset
+DESCRIPTION:Your weekly clinical review — do this every Sunday.\n\nRate yourself 1–10 in each area:\n• Sobriety / Substance use\n• Mood & emotional health\n• Sleep quality\n• Physical health / Exercise\n• Connection with others\n• Treatment block consistency\n• Following the daily schedule\n\nAsk yourself:\n1. What was my biggest win this week?\n2. Where did I struggle most?\n3. What is ONE thing I will adjust next week?\n\nReview your workbook entries from this week. Adjust one thing — not everything.
+CATEGORIES:Recovery Routine
+STATUS:CONFIRMED
+END:VEVENT
+
+END:VCALENDAR

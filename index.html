@@ -1,0 +1,3311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>kataleya — demo v3</title>
+<link rel="icon" type="image/png" href="/kataleya-demo/assets/favicon-butterfly-32.png" />
+<link rel="apple-touch-icon" href="/kataleya-demo/assets/favicon-butterfly-180.png" />
+
+<!-- PWA: makes "add to home screen" open standalone (no browser chrome/URL
+     bar) instead of just bookmarking a tab -- this is the actual mechanism
+     behind "feels like a real app" rather than a styling choice. -->
+<link rel="manifest" href="/kataleya-demo/manifest.json" />
+<meta name="theme-color" content="#000000" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Kataleya" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #000000;
+    --phosphor: #00ff41;
+    --phosphor-terminal: #33ff33;
+    --text: #e8e6f0;
+    --text-muted: #8a8a9e;
+    /* phase vars — set by js */
+    --accent: #8090b0;
+    --shadow: #2e3852;
+    --highlight: #a8bcd4;
+    --ambient: #060810;
+    --rim: #d8e4f8;
+    --mirror-ph-rgb: 0,255,65; /* overridden per-phase by js */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    background: var(--void);
+    color: var(--text);
+    font-family: 'Courier Prime', monospace;
+    overflow: hidden;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+
+  #app { position: fixed; inset: 0; background: var(--void); }
+
+  /* ── screens ── */
+  .screen {
+    position: absolute; inset: 0;
+    z-index: 0; /* without an explicit z-index, position:absolute alone
+      does NOT create a stacking context — any z-index:-1 child (the
+      cocoon rain, the room's mercury-caduceus) then escapes past this
+      element entirely and gets evaluated against a much broader
+      ancestor context, where this screen's own solid background ends
+      up painting ON TOP of it instead of underneath. This traps
+      negative-z-index descendants correctly within their own screen. */
+    display: none;
+    opacity: 0;
+    transition: opacity 600ms ease;
+    background: var(--void);
+  }
+  .screen.active { display: flex; flex-direction: column; }
+  .screen.visible { opacity: 1; }
+
+  /* ── dock ── */
+  #dock {
+    position: fixed;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%);
+    display: flex; gap: 14px;
+    z-index: 90;
+    padding: 8px 14px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 999px;
+    background: rgba(8,8,12,0.55);
+    backdrop-filter: blur(8px);
+    transition: opacity 500ms ease;
+  }
+  #dock.hidden { opacity: 0; pointer-events: none; }
+  .dock-btn {
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    border: none; background: none; cursor: pointer;
+    color: var(--text-muted);
+    font-family: 'Courier Prime', monospace;
+    font-size: 13px;
+    opacity: 0.45;
+    transition: opacity 300ms, color 300ms;
+    border-radius: 50%;
+  }
+  .dock-btn:hover, .dock-btn:focus-visible { opacity: 0.9; outline: none; }
+  .dock-btn:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
+  .dock-btn.on { color: var(--accent); opacity: 1; }
+
+  /* ── shared mono ui bits ── */
+  .bracket-header {
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: lowercase;
+    color: color-mix(in srgb, var(--accent) 75%, transparent);
+  }
+  .hint {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(232,230,240,0.28);
+    text-transform: lowercase;
+  }
+
+  /* ═══════════ room ═══════════ */
+  #screen-room { align-items: center; justify-content: center; }
+  .room-stage {
+    position: relative;
+    width: min(88vw, 420px);
+    aspect-ratio: 1;
+    display: grid; place-items: center;
+    cursor: pointer;
+  }
+  .room-stage svg, .room-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* two slow rivers of light rising from below — barely visible.
+     the garden breathes upward even when you are not looking.
+     ported from surface/mercury-caduceus.tsx (kataleya mobile, 2026-05-09).
+     Scoped to the room-stage's own square (not inset:0 on the whole
+     screen): at full-screen size the same z-index fix that made
+     cocoon-rain visible also made these paths visible outside the
+     stage/orb, where nothing painted over them — read as two solid
+     bars cutting across the screen below the orb instead of a subtle
+     glow contained around it. */
+  .mercury-caduceus {
+    position: absolute; top: 50%; left: 50%;
+    width: min(88vw, 420px); aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    z-index: -1; pointer-events: none;
+    opacity: 0; transition: opacity 3000ms ease;
+  }
+  .mercury-caduceus.in { opacity: 1; }
+  .mercury-caduceus path {
+    stroke: var(--accent); fill: none; stroke-linecap: round;
+    animation: mercury-flow 9s linear infinite;
+  }
+  .mercury-caduceus path:first-child { stroke-width: 0.6; stroke-opacity: 0.10; stroke-dasharray: 14 52; }
+  .mercury-caduceus path:last-child  { stroke-width: 0.6; stroke-opacity: 0.08; stroke-dasharray: 18 48; }
+  @keyframes mercury-flow { to { stroke-dashoffset: -66; } }
+  @media (prefers-reduced-motion: reduce) { .mercury-caduceus path { animation: none; } }
+
+  /* two soft pulses from center — the orb has a pulse, not just a shape.
+     ported (by intent, not literal source — the RN original wasn't
+     available to copy) from surface/river-ripples.tsx, wired into both
+     room and cover in the original app.
+     z-index:3 is deliberate — the orb itself has no explicit z-index,
+     so it was painting OVER the ripples at exactly the radius where
+     they were brightest, and by the time a ripple grew past the orb's
+     edge it had already faded to near-nothing. Ripples now render on
+     top of the orb, like a ring of light crossing over it, not hidden
+     behind it. --rim (a bright phase-tinted highlight, not --accent —
+     the orb's own fill already IS --accent, so a same-color ring
+     washed out against it) keeps it visible against the orb's glow. */
+  .river-ripples { position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+  .river-ripples .ripple {
+    position: absolute; top: 0; left: 0;
+    width: 20px; height: 20px; margin: -10px 0 0 -10px;
+    border-radius: 50%; border: 1.5px solid var(--rim);
+    box-shadow: 0 0 6px var(--rim);
+    opacity: 0; animation: river-ripple 6s ease-out infinite;
+  }
+  .river-ripples .ripple-delay { animation-delay: 3s; }
+  @keyframes river-ripple {
+    0%   { width: 20px; height: 20px; margin: -10px 0 0 -10px; opacity: 0.55; }
+    60%  { opacity: 0.22; }
+    100% { width: 230px; height: 230px; margin: -115px 0 0 -115px; opacity: 0; }
+  }
+  /* deliberately not gated behind reduce-motion — see the ouroboros spark
+     comment for why: this is small, slow, non-flashing ambient motion,
+     not the kind prefers-reduced-motion is meant to suppress. */
+  #room-whisper {
+    position: absolute;
+    top: 12%;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 13px;
+    font-style: italic;
+    line-height: 1.9;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 2400ms ease;
+    white-space: pre-line;
+    padding: 0 24px;
+    pointer-events: none;
+  }
+  #room-whisper.lit { opacity: 0.55; }
+  #room-hint {
+    position: absolute;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    left: 0; right: 0;
+    text-align: center;
+  }
+
+  /* ═══════════ bridge ═══════════ */
+  #screen-bridge { padding: 24px; }
+  .bridge-inner {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 40px;
+    max-width: 420px; margin: 0 auto; width: 100%;
+  }
+  .bridge-line {
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.35;
+  }
+  .bridge-orb-wrap { width: 180px; height: 180px; cursor: pointer; position: relative; }
+  .bridge-orb-wrap svg { width: 100%; height: 100%; }
+  .mood-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.88);
+    z-index: 20;
+    flex-direction: column; gap: 28px;
+  }
+  .mood-overlay.open { display: flex; }
+
+  /* ── butterfly card — surfaces on sustained low mood ──
+     ported from the kataleya mobile app's v2.4 milestone spec:
+     "surfaces on avg mood ≤ 4.5 over last 5 logs" (there, a 1-10 scale;
+     here, mood_value is 1-5, so the threshold is adapted, not copied) */
+  .butterfly-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55);
+    z-index: 25; padding: 24px;
+  }
+  .butterfly-overlay.open { display: flex; }
+  .butterfly-card {
+    max-width: 320px; width: 100%;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 6%, var(--ambient)), var(--ambient));
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: 22px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 30px color-mix(in srgb, var(--accent) 12%, transparent);
+    padding: 28px 24px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+  }
+  .butterfly-card img { width: 46px; height: 46px; border-radius: 50%; opacity: 0.9; }
+  .butterfly-card p {
+    font-size: 13px; line-height: 1.9; letter-spacing: 0.5px;
+    color: var(--text); font-style: italic; margin: 0;
+  }
+  .butterfly-card button {
+    background: none; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--accent); font-family: 'Courier Prime', monospace;
+    font-size: 11px; letter-spacing: 2px; text-transform: lowercase;
+    padding: 10px 22px; cursor: pointer; border-radius: 999px;
+  }
+
+  /* ── breathe overlay ── */
+  .breathe-overlay {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 36px;
+    background: rgba(0,0,0,0.94);
+    z-index: 300;
+  }
+  .breathe-overlay.open { display: flex; }
+  .breathe-ring-wrap { width: min(62vw, 260px); height: min(62vw, 260px); position: relative; }
+  .breathe-ring-wrap svg { width: 100%; height: 100%; overflow: visible; }
+  #breathe-ring {
+    fill: none; stroke: var(--accent); stroke-width: 2;
+    stroke-linecap: round; transform-origin: center;
+    transition: stroke-dashoffset 80ms linear;
+  }
+  #breathe-orb-fill {
+    fill: var(--accent); opacity: 0.16;
+    transform-origin: center;
+    transition: transform 80ms linear;
+  }
+  .breathe-word {
+    font-family: 'Courier Prime', monospace;
+    font-size: 20px; letter-spacing: 4px; text-transform: lowercase;
+    color: var(--text); text-align: center;
+  }
+  .breathe-sub {
+    font-family: 'Courier Prime', monospace;
+    font-size: 11px; letter-spacing: 2px; color: var(--text-muted);
+    text-transform: lowercase;
+  }
+  .breathe-exit {
+    position: absolute; top: calc(20px + env(safe-area-inset-top)); right: 20px;
+    background: none; border: none; color: var(--text-muted);
+    font-size: 13px; letter-spacing: 2px; cursor: pointer;
+    font-family: 'Courier Prime', monospace; text-transform: lowercase;
+  }
+  .breathe-tech { display: flex; gap: 10px; }
+  .breathe-tech button {
+    background: none; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--text-muted); font-family: 'Courier Prime', monospace;
+    font-size: 10px; letter-spacing: 1.5px; text-transform: lowercase;
+    padding: 6px 12px; cursor: pointer; border-radius: 999px;
+    transition: border-color 300ms, color 300ms;
+  }
+  .breathe-tech button.on { color: var(--accent); border-color: var(--accent); }
+  .breathe-link {
+    background: none; border: none; color: var(--accent);
+    font-family: 'Courier Prime', monospace; font-size: 11px; letter-spacing: 1.5px;
+    text-transform: lowercase; cursor: pointer; margin-top: 6px; opacity: 0.85;
+  }
+
+  /* ── wave overlay — riding out an urge ── */
+  .wave-overlay {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 26px;
+    background: rgba(0,0,0,0.94);
+    z-index: 300; padding: 24px;
+  }
+  .wave-overlay.open { display: flex; }
+  .wave-prompt {
+    font-family: 'Courier Prime', monospace; font-size: 14px; letter-spacing: 1px;
+    color: var(--text-muted); text-align: center;
+  }
+  .wave-scale { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 320px; }
+  .wave-scale button {
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    color: var(--text); font-family: 'Courier Prime', monospace;
+    font-size: 12px; letter-spacing: 1px; text-transform: lowercase;
+    padding: 10px 16px; cursor: pointer; border-radius: 999px;
+    transition: border-color 200ms, color 200ms, box-shadow 200ms, transform 100ms;
+  }
+  .wave-scale button:active { transform: scale(0.94); }
+  .wave-scale button:hover, .wave-scale button:focus-visible {
+    border-color: var(--accent); color: var(--accent);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .wave-ride { display: none; flex-direction: column; align-items: center; gap: 26px; }
+  .wave-ride.on { display: flex; }
+  /* the wave-ride orb: an outer wrapper carries the rise/crest/recede
+     physics scale, while the orb SVG inside keeps doing its own normal
+     ambient breathing untouched (same buildOrb() used on room/bridge/cover)
+     -- two independent transforms on two different elements so they never
+     fight over the same style.transform in the same animation frame. */
+  .wave-orb-wrap { width: min(56vw, 220px); height: min(56vw, 220px); transform-origin: center; }
+  .wave-ring-wrap { width: 100%; height: 100%; display: block; }
+  .wave-orb-wrap.crest-flare { filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 55%, transparent)); }
+  .wave-orb-wrap { transition: filter 220ms ease; }
+  .wave-word {
+    font-family: 'Courier Prime', monospace; font-size: 18px; letter-spacing: 3px;
+    color: var(--text); text-transform: lowercase;
+  }
+
+  /* ── ground overlay — 5-4-3-2-1 senses, one at a time ── */
+  .ground-overlay {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 30px;
+    background: rgba(0,0,0,0.94);
+    z-index: 300; padding: 24px;
+  }
+  .ground-overlay.open { display: flex; }
+  .ground-stage { display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 340px; }
+  .ground-count {
+    font-family: 'Courier Prime', monospace; font-size: 44px; line-height: 1;
+    color: var(--accent); text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent);
+    transition: opacity 200ms;
+  }
+  .ground-sense {
+    font-family: 'Courier Prime', monospace; font-size: 12px; letter-spacing: 4px;
+    text-transform: uppercase; color: var(--text-muted); margin-top: -10px;
+  }
+  .ground-prompt {
+    font-family: 'Courier Prime', monospace; font-size: 14px; letter-spacing: 0.5px;
+    color: var(--text); text-align: center; line-height: 1.7;
+  }
+  .ground-dots { display: flex; gap: 14px; }
+  .ground-dot {
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: none; cursor: pointer; padding: 0;
+    transition: background 200ms, box-shadow 200ms, transform 200ms;
+  }
+  .ground-dot:active { transform: scale(0.85); }
+  .ground-dot.filled {
+    background: var(--accent);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  .ground-ack {
+    font-family: 'Courier Prime', monospace; font-size: 11px; letter-spacing: 2px;
+    color: var(--accent); text-transform: lowercase; min-height: 16px;
+    opacity: 0.9;
+  }
+  .ground-hint {
+    font-family: 'Courier Prime', monospace; font-size: 10px; letter-spacing: 1px;
+    color: var(--text-muted); opacity: 0.55; text-transform: lowercase;
+  }
+  .ground-stage.done .ground-hint { display: none; }
+
+  .mood-grid { display: grid; grid-template-columns: repeat(2, 140px); gap: 14px; }
+  .mood-btn {
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    color: var(--text);
+    font-family: 'Courier Prime', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: lowercase;
+    padding: 16px 10px;
+    cursor: pointer;
+    transition: border-color 300ms, background 300ms, box-shadow 300ms, transform 100ms;
+  }
+  .mood-btn:active { transform: scale(0.97); }
+  .mood-btn:hover, .mood-btn:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 22%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    outline: none;
+  }
+  .bridge-ack {
+    font-size: 12px; font-style: italic; letter-spacing: 1px;
+    color: var(--accent); opacity: 0; transition: opacity 1200ms ease;
+    min-height: 18px;
+  }
+  .bridge-ack.lit { opacity: 0.8; }
+
+  /* ═══════════ cover (cocoon) ═══════════ */
+  #screen-cover { align-items: center; justify-content: center; cursor: pointer; }
+  .cover-orb { width: 130px; height: 130px; position: relative; z-index: 1; }
+  .cocoon-exit {
+    position: absolute; top: calc(20px + env(safe-area-inset-top)); left: 20px;
+    background: none; border: none; color: var(--text-muted);
+    font-family: 'Courier Prime', monospace; font-size: 13px; letter-spacing: 2px;
+    text-transform: lowercase; cursor: pointer; opacity: 0.6; z-index: 2;
+  }
+  .cocoon-exit:hover, .cocoon-exit:focus-visible { opacity: 1; }
+  .cocoon-rain { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
+  .raindrop {
+    position: absolute; top: -40px;
+    width: 1.5px; border-radius: 999px;
+    background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+    opacity: 0.16;
+    animation: rainfall linear infinite;
+  }
+  @keyframes rainfall { to { transform: translateY(120vh); } }
+  /* deliberately not gated behind reduce-motion — see the ouroboros
+     spark comment (search "seconds spark") for the reasoning. */
+  .cover-phrase {
+    margin-top: 48px;
+    font-size: 14px; font-style: italic;
+    letter-spacing: 1.5px; line-height: 2;
+    color: var(--text-muted);
+    text-align: center;
+    white-space: pre-line;
+    min-height: 56px;
+    padding: 0 32px;
+    transition: opacity 900ms ease;
+  }
+  .cover-hold-ring {
+    position: fixed; inset: 0; pointer-events: none;
+    display: grid; place-items: center;
+  }
+  .cover-hold-ring svg { width: 220px; height: 220px; }
+  #cover-hint { position: absolute; bottom: calc(70px + env(safe-area-inset-bottom)); }
+
+  /* ═══════════ terminal ═══════════ */
+  #screen-terminal {
+    padding: 20px 18px calc(70px + env(safe-area-inset-bottom));
+    color: var(--phosphor-terminal);
+    overflow: hidden;
+  }
+  #screen-terminal * { font-family: 'Courier Prime', monospace; }
+  .term-scroll { flex: 1; overflow-y: auto; scrollbar-width: none; }
+  .term-scroll::-webkit-scrollbar { display: none; }
+  .term-block { margin-bottom: 18px; }
+  .term-label {
+    font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+    color: rgba(51,255,51,0.4);
+    border-bottom: 1px solid rgba(51,255,51,0.15);
+    padding-bottom: 3px; margin-bottom: 8px;
+    display: inline-block;
+  }
+  .term-row { font-size: 12px; line-height: 1.9; color: rgba(51,255,51,0.85); }
+  .term-row b { color: var(--phosphor-terminal); font-weight: 400; }
+  .term-dim { color: rgba(51,255,51,0.4); }
+  .term-cyan { color: #40e0ff; }
+  .term-amber { color: #ffb340; }
+  .term-red { color: #ff5050; }
+  .term-nav { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  .term-nav button {
+    background: none; border: none; cursor: pointer;
+    font-size: 12px; letter-spacing: 1px; padding: 2px 0;
+  }
+  .term-nav button:focus-visible { outline: 1px solid currentColor; }
+  .breath-select { display: flex; gap: 10px; flex-wrap: wrap; }
+  .breath-select button {
+    background: none; cursor: pointer;
+    border: 1px solid rgba(51,255,51,0.3);
+    color: rgba(51,255,51,0.7);
+    font-size: 11px; letter-spacing: 1px;
+    padding: 6px 12px;
+  }
+  .breath-select button.on {
+    border-color: var(--phosphor-terminal);
+    color: var(--phosphor-terminal);
+    background: rgba(51,255,51,0.06);
+  }
+  .term-input-row {
+    display: flex; gap: 8px; align-items: center;
+    border-top: 1px solid rgba(51,255,51,0.2);
+    padding-top: 12px; margin-top: 6px;
+  }
+  #term-input {
+    flex: 1;
+    background: none; border: none; outline: none;
+    color: var(--phosphor-terminal);
+    font-size: 13px; letter-spacing: 1px;
+    caret-color: var(--phosphor-terminal);
+  }
+  /* a persistent blinking cursor next to the prompt so the input reads
+     as typeable without needing to auto-focus it — auto-focus was tried
+     and reverted: it silently broke arrow-key screen navigation, since
+     the global keydown handler intentionally ignores keys while an
+     input has focus (so it doesn't hijack normal typing) */
+  .term-cursor-hint { color: var(--phosphor-terminal); margin-left: -4px; }
+  #term-input:focus ~ .term-cursor-hint,
+  #term-input:not(:placeholder-shown) ~ .term-cursor-hint { display: none; }
+  .term-log-line { font-size: 11px; line-height: 1.8; color: rgba(51,255,51,0.6); }
+
+  /* ═══════════ burn ═══════════ */
+  #screen-burn { padding: 28px 24px calc(80px + env(safe-area-inset-bottom)); align-items: center; }
+  .burn-inner { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 460px; gap: 26px; }
+  #burn-text {
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--text);
+    font-family: 'Courier Prime', monospace;
+    font-size: 14px; line-height: 1.8; letter-spacing: 0.5px;
+    padding: 18px;
+    min-height: 130px;
+    resize: none;
+    outline: none;
+    user-select: text;
+    transition: filter 2000ms ease, transform 2000ms ease, opacity 2000ms ease;
+  }
+  #burn-text:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+  #burn-text.sinking {
+    filter: blur(6px);
+    transform: translateY(160px) scale(0.92);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .burn-release {
+    align-self: center;
+    background: none; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+    font-family: 'Courier Prime', monospace;
+    font-size: 12px; letter-spacing: 3px; text-transform: lowercase;
+    padding: 12px 30px;
+    transition: background 300ms;
+  }
+  .burn-release:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .mercury-river { width: 100%; height: 120px; margin-top: auto; }
+  .burn-done {
+    text-align: center; font-size: 13px; font-style: italic; letter-spacing: 1px;
+    color: var(--accent); opacity: 0; transition: opacity 1500ms ease; min-height: 20px;
+  }
+  .burn-done.lit { opacity: 0.85; }
+
+  /* ═══════════ scars + vault (shared archive style) ═══════════ */
+  .archive-screen { padding: 28px 22px calc(80px + env(safe-area-inset-bottom)); }
+  .archive-scroll { flex: 1; overflow-y: auto; scrollbar-width: none; margin-top: 22px; }
+  .archive-scroll::-webkit-scrollbar { display: none; }
+  .archive-list { position: relative; padding-left: 22px; max-width: 480px; margin: 0 auto; }
+  .archive-list::before {
+    content: '';
+    position: absolute; left: 4px; top: 0; bottom: 0;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 40%, transparent), transparent);
+  }
+  .archive-entry { position: relative; padding: 14px 0; opacity: 0; animation: decrypt-in 700ms ease forwards; }
+  .archive-entry::before {
+    content: '';
+    position: absolute; left: -21px; top: 22px;
+    width: 7px; height: 7px;
+    background: var(--accent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  /* scars are healing light, not wounds — a steady moss-green mark
+     instead of the phase accent, so the trace reads as growth
+     regardless of what hour it's viewed at. a slow living pulse (not the
+     room ring's fast breath-sync) so "the moss will grow over them" is
+     something the mark visibly does, not just copy on an empty state. */
+  #scars-list .archive-entry::before {
+    background: #7a9b6e;
+    box-shadow: 0 0 8px rgba(122,155,110,0.5);
+    animation: moss-grow 5.5s ease-in-out infinite;
+  }
+  @keyframes moss-grow {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 8px rgba(122,155,110,0.5); }
+    50% { transform: scale(1.35); box-shadow: 0 0 13px rgba(122,155,110,0.8); }
+  }
+  @keyframes decrypt-in {
+    0% { opacity: 0; filter: blur(3px); }
+    40% { opacity: 0.7; filter: blur(1px); }
+    55% { opacity: 0.3; }
+    100% { opacity: 1; filter: blur(0); }
+  }
+  .entry-meta { font-size: 9px; letter-spacing: 2px; color: rgba(232,230,240,0.35); margin-bottom: 4px; }
+  .entry-body { font-size: 12.5px; line-height: 1.75; color: var(--text-muted); user-select: text; }
+  .entry-body em { color: var(--accent); font-style: normal; }
+  .archive-empty {
+    text-align: center; margin-top: 60px;
+    font-size: 12px; font-style: italic; letter-spacing: 1px;
+    color: rgba(232,230,240,0.3); line-height: 2.2;
+  }
+  .vault-compose { display: flex; gap: 10px; margin-top: 16px; max-width: 480px; margin-inline: auto; width: 100%; }
+  .vault-compose input {
+    flex: 1;
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--text);
+    font-family: 'Courier Prime', monospace;
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    user-select: text;
+  }
+  .vault-compose button {
+    background: none; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+    font-family: 'Courier Prime', monospace;
+    font-size: 11px; letter-spacing: 2px;
+    padding: 0 18px;
+  }
+
+  /* ═══════════ settings ═══════════ */
+  #screen-settings { padding: 28px 24px calc(80px + env(safe-area-inset-bottom)); }
+  .settings-scroll { flex: 1; overflow-y: auto; scrollbar-width: none; margin-top: 24px; }
+  .settings-scroll::-webkit-scrollbar { display: none; }
+  .settings-inner { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+  /* grouped sections -- was one long undifferentiated list (profile fields,
+     backup/restore, and the purge button all read as the same weight).
+     Each section is its own lightly-elevated card with a small header, so
+     scanning the page shows structure, not just a wall of controls. */
+  .settings-section {
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--accent) 2.5%, transparent);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.22);
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .settings-section-title {
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+    opacity: 0.75;
+  }
+  .settings-section.danger {
+    border-color: rgba(255,80,80,0.22);
+    background: rgba(255,80,80,0.02);
+  }
+  .settings-section.danger .settings-section-title { color: rgba(255,110,110,0.75); }
+
+  /* compact action pills -- ghost-btn/danger-btn defaulted to width:100%,
+     making a routine action (copy a code) and a destructive one (purge
+     memory) occupy the exact same visual footprint. Pills size to their
+     own label and wrap, so a row of related actions reads as a row, not
+     a stack of identical full-width bars. */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .pill-row .ghost-btn, .pill-row .danger-btn { width: auto; flex: 0 1 auto; padding-left: 18px; padding-right: 18px; border-radius: 999px; }
+  .pill-row .ghost-btn.selected { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .field label {
+    display: block;
+    font-size: 9px; letter-spacing: 3px; text-transform: lowercase;
+    color: rgba(232,230,240,0.4);
+    margin-bottom: 8px;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: color-mix(in srgb, var(--accent) 3%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: 10px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+    color: var(--text);
+    font-family: 'Courier Prime', monospace;
+    font-size: 14px;
+    padding: 12px 14px;
+    outline: none;
+    user-select: text;
+    transition: border-color 200ms, box-shadow 200ms;
+  }
+  .field select { appearance: none; cursor: pointer; }
+  .field select option { background: #0d0d14; }
+  .field input:focus, .field select:focus {
+    border-color: var(--accent);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+  .toggle {
+    width: 44px; height: 24px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: rgba(0,0,0,0.25); cursor: pointer; position: relative;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.35);
+    transition: background 250ms;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    transition: left 250ms, background 250ms, box-shadow 250ms;
+  }
+  .toggle.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .toggle.on::after { left: 23px; background: var(--accent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent); }
+  .danger-btn, .ghost-btn {
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+    cursor: pointer;
+    font-family: 'Courier Prime', monospace;
+    font-size: 11px; letter-spacing: 3px; text-transform: lowercase;
+    padding: 13px;
+    width: 100%;
+    border-radius: 12px;
+    transition: background 200ms, box-shadow 150ms, transform 100ms;
+  }
+  .ghost-btn { border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+  .ghost-btn:hover { box-shadow: 0 3px 14px color-mix(in srgb, var(--accent) 20%, transparent); }
+  .ghost-btn:active, .danger-btn:active { transform: scale(0.98); }
+  .danger-btn { border: 1px solid rgba(255,80,80,0.35); color: rgba(255,110,110,0.85); background: rgba(255,80,80,0.03); }
+  .danger-btn:hover { background: rgba(255,80,80,0.08); box-shadow: 0 3px 14px rgba(255,80,80,0.12); }
+  .settings-footer {
+    margin-top: 12px; text-align: center;
+    font-size: 9px; letter-spacing: 2px; color: rgba(232,230,240,0.25);
+    line-height: 2.4;
+  }
+  .settings-footer a { color: rgba(232,230,240,0.4); }
+  .settings-glow-link {
+    display: inline-block; margin-top: 4px;
+    text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 16px color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--accent) !important;
+    animation: settings-link-pulse 3.2s ease-in-out infinite;
+  }
+  @keyframes settings-link-pulse {
+    0%, 100% { opacity: 0.75; }
+    50% { opacity: 1; }
+  }
+  .settings-mark {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    margin: 0 4px 0 12px; opacity: 0.55; transition: opacity 300ms; flex-shrink: 0;
+  }
+  .settings-mark:hover { opacity: 0.9; }
+  .settings-mark img { width: 30px; height: 30px; border-radius: 50%; display: block; }
+  .settings-sig {
+    font-family: 'Courier Prime', monospace; font-size: 9px; letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+
+  /* ═══════════ onboarding ═══════════ */
+  #screen-onboarding { align-items: center; justify-content: center; padding: 32px; z-index: 60; }
+  .ob-stage { max-width: 380px; width: 100%; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 34px; }
+  .ob-text { font-size: 14px; font-style: italic; line-height: 2.1; letter-spacing: 1px; color: var(--text-muted); white-space: pre-line; }
+  .ob-stage input {
+    width: 100%; max-width: 280px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    color: var(--text);
+    font-family: 'Courier Prime', monospace;
+    font-size: 16px;
+    text-align: center;
+    padding: 10px 6px;
+    outline: none;
+    user-select: text;
+  }
+  .ob-next {
+    background: none; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+    font-family: 'Courier Prime', monospace;
+    font-size: 11px; letter-spacing: 3px; text-transform: lowercase;
+    padding: 12px 34px;
+  }
+  .ob-orb { width: 110px; height: 110px; }
+
+  /* ═══════════ mirror v2 — living diagnostic ═══════════ */
+  #screen-mirror {
+    padding: 0;
+    color: var(--phosphor);
+  }
+  #screen-mirror * { font-family: 'Courier Prime', monospace; }
+  .mirror-crt {
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background:
+      repeating-linear-gradient(0deg, rgba(var(--mirror-ph-rgb),0.015) 0px, rgba(var(--mirror-ph-rgb),0.015) 1px, transparent 1px, transparent 3px);
+  }
+  .mirror-vignette {
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+  }
+  #mirror-scanline {
+    position: absolute; left: 0; right: 0; height: 90px; z-index: 4;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(var(--mirror-ph-rgb),0.05) 55%, rgba(var(--mirror-ph-rgb),0.10) 82%, transparent);
+    top: -100px;
+  }
+  .mirror-scroll {
+    flex: 1; overflow-y: auto; scrollbar-width: none;
+    padding: 20px 24px calc(84px + env(safe-area-inset-bottom));
+    position: relative; z-index: 2;
+  }
+  .mirror-scroll::-webkit-scrollbar { display: none; }
+  .mirror-inner { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  .mirror-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0;
+  }
+  .mirror-header .lbl {
+    font-size: 12px; letter-spacing: 3px; text-transform: lowercase;
+    color: rgba(var(--mirror-ph-rgb),0.65);
+    text-shadow: 0 0 6px rgba(var(--mirror-ph-rgb),0.35);
+  }
+  .mirror-status { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 2px; color: rgba(var(--mirror-ph-rgb),0.65); }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--phosphor);
+    box-shadow: 0 0 8px var(--phosphor);
+    animation: dot-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes dot-pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+  #mirror-lock-btn { display: none; margin-left: 4px; cursor: pointer; opacity: 0.7; font-size: 11px; }
+  #mirror-lock-btn:active { opacity: 1; }
+
+  .mirror-pin-gate {
+    display: none;
+    position: absolute; inset: 0; z-index: 10;
+    background: rgba(6,8,10,0.94);
+    backdrop-filter: blur(6px);
+    align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .mirror-pin-gate.open { display: flex; }
+  .mirror-pin-box {
+    width: 100%; max-width: 300px;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    text-align: center;
+  }
+  .mp-lbl {
+    font-size: 12px; letter-spacing: 3px; text-transform: lowercase;
+    color: rgba(var(--mirror-ph-rgb),0.75);
+    text-shadow: 0 0 8px rgba(var(--mirror-ph-rgb),0.4);
+  }
+  .mp-prompt { font-size: 11px; letter-spacing: 1px; color: var(--phosphor); opacity: 0.75; line-height: 1.6; }
+  .mp-dots { display: flex; gap: 12px; }
+  .mp-dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 1px solid rgba(var(--mirror-ph-rgb),0.5);
+    transition: background 120ms, box-shadow 120ms;
+  }
+  .mp-dot.filled { background: var(--phosphor); box-shadow: 0 0 8px var(--phosphor); }
+  .mp-err { font-size: 10px; letter-spacing: 1px; color: #e08a8a; min-height: 14px; }
+  .mp-keypad { display: grid; grid-template-columns: repeat(3, 56px); gap: 10px; }
+  .mp-keypad button {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 1px solid rgba(var(--mirror-ph-rgb),0.25);
+    background: linear-gradient(160deg, rgba(var(--mirror-ph-rgb),0.08), rgba(var(--mirror-ph-rgb),0.02));
+    box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    color: var(--phosphor);
+    font-family: 'Courier Prime', monospace;
+    font-size: 17px;
+    transition: background 120ms, border-color 120ms, box-shadow 120ms, transform 100ms;
+  }
+  .mp-keypad button:active {
+    background: rgba(var(--mirror-ph-rgb),0.16); border-color: rgba(var(--mirror-ph-rgb),0.5);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.35);
+    transform: scale(0.94);
+  }
+  .mp-keypad button.mp-ghost { font-size: 11px; letter-spacing: 1px; opacity: 0.6; border-color: transparent; background: transparent; }
+  .mp-hint { font-size: 9px; letter-spacing: 1px; color: var(--text-muted); opacity: 0.6; max-width: 240px; line-height: 1.7; }
+
+  .vessel-wrap { display: grid; place-items: center; position: relative; }
+  .vessel-wrap svg { width: min(64vw, 250px); height: auto; filter: drop-shadow(0 0 6px rgba(var(--mirror-ph-rgb),0.18)); }
+  .vessel-glow {
+    position: absolute;
+    width: 260px; height: 420px; border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(var(--mirror-ph-rgb),0.05), transparent 70%);
+    pointer-events: none;
+  }
+
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .diag-cell {
+    border: 1px solid rgba(var(--mirror-ph-rgb),0.18);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: linear-gradient(160deg, rgba(var(--mirror-ph-rgb),0.05), rgba(var(--mirror-ph-rgb),0.015));
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3), inset 0 1px 0 rgba(var(--mirror-ph-rgb),0.08);
+  }
+  .diag-lbl {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 9.5px; letter-spacing: 2px; text-transform: lowercase;
+    color: rgba(var(--mirror-ph-rgb),0.55);
+    margin-bottom: 7px;
+  }
+  .diag-lbl::before {
+    content: '';
+    width: 4px; height: 4px;
+    background: var(--phosphor);
+    box-shadow: 0 0 6px var(--phosphor);
+  }
+  .diag-val {
+    font-size: 20px; color: var(--phosphor);
+    text-shadow: 0 0 8px rgba(var(--mirror-ph-rgb),0.4);
+    min-height: 26px;
+  }
+  .diag-sub { margin-top: 7px; height: 12px; display: flex; align-items: center; gap: 3px; }
+  .diag-bar-track { width: 70%; height: 2px; background: rgba(var(--mirror-ph-rgb),0.18); overflow: hidden; }
+  .diag-bar-fill { height: 100%; background: rgba(var(--mirror-ph-rgb),0.55); width: 0%; transition: width 1600ms cubic-bezier(.2,.8,.2,1); }
+  .phase-cell-bar { width: 6px; height: 12px; border: 1px solid var(--phosphor); background: var(--phosphor); transition: opacity 500ms; }
+  .mini-cell-bar { width: 8px; height: 8px; border: 1px solid var(--phosphor); background: var(--phosphor); transition: opacity 500ms; }
+
+  .ekg-block {
+    border: 1px solid rgba(var(--mirror-ph-rgb),0.18);
+    border-radius: 12px;
+    padding: 12px 14px 8px;
+    background: linear-gradient(160deg, rgba(var(--mirror-ph-rgb),0.05), rgba(var(--mirror-ph-rgb),0.015));
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3), inset 0 1px 0 rgba(var(--mirror-ph-rgb),0.08);
+  }
+  .ekg-block svg { width: 100%; height: 64px; display: block; }
+  .ekg-caption { font-size: 9px; letter-spacing: 2px; color: rgba(var(--mirror-ph-rgb),0.4); margin-top: 6px; display: flex; justify-content: space-between; }
+
+  .mirror-logs { border-top: 1px solid rgba(var(--mirror-ph-rgb),0.12); padding-top: 14px; }
+  .mirror-log-title {
+    font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+    color: rgba(var(--mirror-ph-rgb),0.35); margin-bottom: 8px;
+  }
+  .mirror-log-line { font-size: 11px; line-height: 1.9; color: rgba(var(--mirror-ph-rgb),0.6); }
+  .mirror-log-line .p { color: rgba(var(--mirror-ph-rgb),0.3); margin-right: 8px; }
+  .mirror-log-line.bright { color: var(--phosphor); }
+  .cursor-blink::after { content: '_'; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .mirror-footer {
+    display: flex; justify-content: space-between;
+    border-top: 1px solid rgba(var(--mirror-ph-rgb),0.12);
+    padding-top: 12px;
+    font-size: 10px; letter-spacing: 2px; text-transform: lowercase;
+    color: rgba(var(--mirror-ph-rgb),0.3);
+  }
+
+  /* organ labels revealed by scan */
+  .organ-label { font-size: 8px; letter-spacing: 1.5px; fill: rgba(var(--mirror-ph-rgb),0.0); transition: fill 500ms; text-transform: lowercase; }
+  .organ-label.revealed { fill: rgba(var(--mirror-ph-rgb),0.7); }
+
+  /* ── toast ── */
+  #toast {
+    position: fixed;
+    /* bottom-anchored, not top — terminal's content starts right after its
+       header with no dead space, so no fixed top offset could ever clear
+       it. Bottom, above the dock (~60px) and cocoon's hint (~90px). */
+    bottom: calc(110px + env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%);
+    max-width: min(78vw, 340px);
+    text-align: center;
+    font-size: 11px; letter-spacing: 1px;
+    color: var(--accent);
+    background: rgba(10,10,12,0.88);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 18px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent);
+    padding: 10px 22px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 500ms;
+    z-index: 200;
+    text-transform: lowercase;
+  }
+  #toast.lit { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* exceptions carved out first — small/slow/non-flashing ambient
+       motion that isn't what prefers-reduced-motion is meant to
+       suppress. (`revert` was tried here first and doesn't work: it
+       rolls back to the pre-author-stylesheet default of 0s, not the
+       6s this same file sets elsewhere — so it never actually
+       animated. :not() exclusion avoids that entirely.) */
+    *:not(.raindrop):not(.ripple), *::before, *::after {
+      animation-duration: 0.01ms !important; transition-duration: 0.01ms !important;
+    }
+  }
+  @media (max-width: 420px) {
+    .mood-grid { grid-template-columns: repeat(2, 42vw); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ onboarding ══ -->
+  <section class="screen" id="screen-onboarding">
+    <div class="ob-stage" id="ob-stage"></div>
+  </section>
+
+  <!-- ══ room ══ -->
+  <section class="screen" id="screen-room">
+    <svg class="mercury-caduceus" id="mercury-caduceus" viewBox="0 0 100 300" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M42 300 C 70 258, 66 210, 42 165 S 14 120, 42 75 S 72 30, 44 0"/>
+      <path d="M58 300 C 30 258, 34 210, 58 165 S 86 120, 58 75 S 28 30, 56 0"/>
+    </svg>
+    <div class="room-stage" id="room-stage" title="long-press for terminal">
+      <canvas id="ouro-canvas" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+      <div class="river-ripples" aria-hidden="true"><span class="ripple"></span><span class="ripple ripple-delay"></span></div>
+      <svg id="room-orb" viewBox="0 0 200 200" style="width:46%;height:46%;position:relative;"></svg>
+    </div>
+    <div id="room-whisper"></div>
+    <div id="room-hint" class="hint">swipe ← bridge &nbsp;·&nbsp; swipe ↑ cocoon &nbsp;·&nbsp; hold seed → terminal</div>
+    <div class="butterfly-overlay" id="butterfly-overlay">
+      <div class="butterfly-card">
+        <img src="/butterfly-sm.gif" alt="" />
+        <p>the last few days have carried weight.<br/>you're still here, still tending this.<br/>that counts for more than it feels like.</p>
+        <button id="butterfly-dismiss">i know</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ bridge ══ -->
+  <section class="screen" id="screen-bridge">
+    <div style="padding-top: calc(20px + env(safe-area-inset-top)); text-align:center;">
+      <span class="bracket-header">[ presence_bridge ]</span>
+    </div>
+    <div class="bridge-inner">
+      <div class="bridge-line"></div>
+      <div class="bridge-orb-wrap" id="bridge-orb-wrap">
+        <svg id="bridge-orb" viewBox="0 0 200 200"></svg>
+      </div>
+      <div class="hint">tap the orb. report the weather inside.</div>
+      <div class="hint" id="craving-hint" style="display:none;"></div>
+      <button class="breathe-link" id="breathe-open-bridge">or breathe with me →</button>
+      <button class="breathe-link" id="wave-open-bridge">riding a wave? →</button>
+      <button class="breathe-link" id="ground-open-bridge">need to come back? →</button>
+      <div class="bridge-ack" id="bridge-ack"></div>
+      <div class="bridge-line"></div>
+    </div>
+    <div class="mood-overlay" id="mood-overlay">
+      <span class="bracket-header">[ how is the weather in there ]</span>
+      <div class="mood-grid" id="mood-grid"></div>
+      <button class="mood-btn" id="mood-cancel" style="border-color:rgba(255,255,255,0.12);color:var(--text-muted);">not now</button>
+    </div>
+  </section>
+
+  <!-- ══ cover / cocoon ══ -->
+  <section class="screen" id="screen-cover">
+    <div class="cocoon-rain" id="cocoon-rain" aria-hidden="true"></div>
+    <button class="cocoon-exit" id="cocoon-exit">← back</button>
+    <div style="position:relative;width:130px;height:130px;">
+      <div class="river-ripples" aria-hidden="true"><span class="ripple"></span><span class="ripple ripple-delay"></span></div>
+      <svg class="cover-orb" id="cover-orb" viewBox="0 0 200 200"></svg>
+    </div>
+    <div class="cover-phrase" id="cover-phrase"></div>
+    <button class="breathe-link" id="breathe-open-cover">or breathe with me →</button>
+    <div class="cover-hold-ring"><svg viewBox="0 0 220 220"><circle id="hold-ring" cx="110" cy="110" r="100" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="628" stroke-dashoffset="628" transform="rotate(-90 110 110)"/></svg></div>
+    <div id="cover-hint" class="hint">tap ← back anytime · or hold anywhere to return</div>
+  </section>
+
+  <!-- ══ terminal ══ -->
+  <section class="screen" id="screen-terminal">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:env(safe-area-inset-top);margin-bottom:2px;">
+      <span style="font-size:12px;letter-spacing:3px;color:rgba(51,255,51,0.6);">[ engine_room ]</span>
+      <span style="font-size:11px;letter-spacing:2px;color:rgba(51,255,51,0.5);" id="term-clock"></span>
+    </div>
+    <div style="font-size:10px;letter-spacing:1px;color:rgba(51,255,51,0.35);margin-bottom:12px;">the garden's vitals — what it remembers, in plain sight</div>
+    <div class="term-scroll" id="term-scroll">
+      <div class="term-block">
+        <span class="term-label">circadian_core</span>
+        <div class="term-row">phase&nbsp;&nbsp;&nbsp;&nbsp;: <b id="t-phase"></b> <span class="term-dim" id="t-existential"></span></div>
+        <div class="term-row">breath&nbsp;&nbsp;&nbsp;&nbsp;: <b id="t-breath"></b></div>
+        <div class="term-row">re_entry&nbsp; : <b id="t-reentry"></b> <span class="term-dim">— back after 4+ hours away</span></div>
+        <div class="term-row">uptime&nbsp;&nbsp;&nbsp; : <b id="t-uptime">0s</b></div>
+      </div>
+      <div class="term-block">
+        <span class="term-label">breath_technique</span>
+        <div class="breath-select" id="breath-select"></div>
+        <button class="breathe-link" id="breathe-open-term">practice this rhythm →</button>
+      </div>
+      <div class="term-block">
+        <span class="term-label">navigation</span>
+        <div class="term-nav">
+          <button class="term-cyan" data-nav="room">/room</button>
+          <button class="term-cyan" data-nav="bridge">/bridge</button>
+          <button class="term-cyan" data-nav="mirror">/mirror</button>
+          <button class="term-amber" data-nav="burn">/burn</button>
+          <button class="term-amber" data-nav="scars">/scars</button>
+          <button class="term-amber" data-nav="vault">/vault</button>
+          <button class="term-red" data-nav="settings">/settings</button>
+        </div>
+      </div>
+      <div class="term-block">
+        <span class="term-label">session_log</span>
+        <div id="term-log"></div>
+      </div>
+    </div>
+    <div class="term-input-row">
+      <span style="color:rgba(51,255,51,0.5);">&gt;</span>
+      <input id="term-input" autocomplete="off" spellcheck="false" placeholder="/reset · /seed · /phase nyx · /mirror ..." style="order:2;" />
+      <span class="term-cursor-hint cursor-blink" aria-hidden="true" style="order:1;"></span>
+    </div>
+  </section>
+
+  <!-- ══ pairing — real sponsor/sponsee handshake, its own screen instead
+       of a decorative terminal button. No server anywhere in this app;
+       pairing is manual by design (see vendor/NOTICE.md for the crypto). ══ -->
+  <section class="screen" id="screen-pairing">
+    <div style="padding-top: env(safe-area-inset-top);">
+      <span class="bracket-header">[ sponsor_signal ]</span>
+    </div>
+    <div class="settings-scroll"><div class="settings-inner">
+
+      <div class="settings-section" id="pairing-role-section">
+        <div class="settings-section-title">who's on this device?</div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          only needed if you want to pair with a sponsor or sponsee. skip entirely
+          if you don't have one yet — nothing else in the app needs it.
+        </div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="pairing-role-sponsee">i'm the sponsee</button>
+          <button class="ghost-btn" id="pairing-role-sponsor">i'm the sponsor</button>
+        </div>
+      </div>
+
+      <div class="settings-section" id="pairing-connect-section" style="display:none;">
+        <div class="settings-section-title" id="pairing-connect-title">connect</div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          share this with them however you already talk (text, email) — then paste
+          what they send back to you, below.
+        </div>
+        <div class="field">
+          <textarea id="pairing-my-code" readonly rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text-muted);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+        </div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="pairing-copy-code">copy this</button>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <textarea id="pairing-their-code" placeholder="paste what they sent you" rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+        </div>
+        <div id="pairing-error" style="font-size:11px;color:#ff6666;"></div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="pairing-confirm">connect</button>
+        </div>
+      </div>
+
+      <div class="settings-section" id="pairing-paired-section" style="display:none;">
+        <div class="settings-section-title">connected</div>
+        <div class="field">
+          <label for="pairing-partner-label">their name (optional, just for you)</label>
+          <input id="pairing-partner-label" maxlength="40" />
+        </div>
+        <div class="pill-row">
+          <button class="danger-btn" id="pairing-unpair">disconnect</button>
+        </div>
+      </div>
+
+      <div class="settings-section" id="pairing-send-section" style="display:none;">
+        <div class="settings-section-title">a light for <span id="pairing-send-name">them</span></div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          no words, just a signal that reaches only them.
+        </div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="pairing-send-light">send a light</button>
+        </div>
+        <div id="pairing-outgoing-wrap" style="display:none;">
+          <div class="field" style="margin-top:8px;">
+            <textarea id="pairing-outgoing-code" readonly rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text-muted);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+          </div>
+          <div class="pill-row">
+            <button class="ghost-btn" id="pairing-copy-signal">copy — send it their way</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section" id="pairing-relay-section" style="display:none;">
+        <div class="settings-section-title">recent lights</div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          when you're both online, lights arrive here on their own — no pasting needed.
+          this is best-effort; the paste option below always works, even with no connection.
+        </div>
+        <div id="pairing-relay-history" style="display:none;margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.9;"></div>
+      </div>
+
+      <div class="settings-section" id="pairing-receive-section" style="display:none;">
+        <div class="settings-section-title">did a light arrive?</div>
+        <div class="field">
+          <textarea id="pairing-incoming-code" placeholder="paste what they sent" rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+        </div>
+        <div id="pairing-decrypt-error" style="font-size:11px;color:#ff6666;"></div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="pairing-decrypt">see</button>
+        </div>
+        <div class="field" id="pairing-decrypted-wrap" style="display:none;margin-top:8px;">
+          <div style="border:1px solid color-mix(in srgb, var(--phosphor-terminal) 35%, transparent);border-radius:10px;background:color-mix(in srgb, var(--phosphor-terminal) 8%, transparent);padding:14px 12px;font-family:'Courier Prime',monospace;font-size:13px;color:var(--text);text-align:center;" id="pairing-decrypted-text"></div>
+        </div>
+      </div>
+
+    </div></div>
+  </section>
+
+  <!-- ══ burn ══ -->
+  <section class="screen" id="screen-burn">
+    <div style="padding-top: calc(20px + env(safe-area-inset-top)); text-align:center;">
+      <span class="bracket-header">[ burn_ritual ]</span>
+    </div>
+    <div class="burn-inner">
+      <div class="hint" style="text-align:center;">write the thought. release it into the river.</div>
+      <textarea id="burn-text" placeholder="what are you carrying…"></textarea>
+      <button class="burn-release" id="burn-release">release</button>
+      <div class="burn-done" id="burn-done"></div>
+      <svg class="mercury-river" id="mercury-river" viewBox="0 0 460 120" preserveAspectRatio="none"></svg>
+    </div>
+  </section>
+
+  <!-- ══ scars ══ -->
+  <section class="screen archive-screen" id="screen-scars">
+    <div style="padding-top: env(safe-area-inset-top);"><span class="bracket-header">[ biometric_scars ]</span></div>
+    <div class="archive-scroll"><div class="archive-list" id="scars-list"></div></div>
+  </section>
+
+  <!-- ══ vault ══ -->
+  <section class="screen archive-screen" id="screen-vault">
+    <div style="padding-top: env(safe-area-inset-top);display:flex;justify-content:space-between;align-items:center;">
+      <span class="bracket-header">[ journal_vault ]</span>
+      <span id="vault-lock-btn" title="lock now" style="display:none;cursor:pointer;opacity:0.7;font-size:14px;">🔒</span>
+    </div>
+
+    <div class="vault-compose">
+      <input id="vault-input" placeholder="leave a line for the vault…" maxlength="280" />
+      <button id="vault-save">seal</button>
+    </div>
+
+    <!-- gate covers only the reading area below — writing a new entry
+         never requires the PIN, only reading past ones does. -->
+    <div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;">
+      <div class="mirror-pin-gate" id="vault-pin-gate">
+        <div class="mirror-pin-box">
+          <div class="mp-lbl">[ locked ]</div>
+          <div class="mp-prompt">enter the clinician PIN to read the vault</div>
+          <div class="mp-dots">
+            <span class="mp-dot" id="vault-pin-dot-0"></span>
+            <span class="mp-dot" id="vault-pin-dot-1"></span>
+            <span class="mp-dot" id="vault-pin-dot-2"></span>
+            <span class="mp-dot" id="vault-pin-dot-3"></span>
+          </div>
+          <div class="mp-err" id="vault-pin-err"></div>
+          <div class="mp-keypad" id="vault-pin-keypad">
+            <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+            <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+            <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+            <button data-k="clr" class="mp-ghost">clr</button><button data-k="0">0</button><button data-k="back" class="mp-ghost">⌫</button>
+          </div>
+          <div class="mp-hint">shown once, on this device only · not a substitute for clinical security</div>
+        </div>
+      </div>
+      <div class="archive-scroll"><div class="archive-list" id="vault-list"></div></div>
+    </div>
+  </section>
+
+  <!-- ══ settings ══ -->
+  <section class="screen" id="screen-settings">
+    <div style="padding-top: env(safe-area-inset-top);display:flex;align-items:center;justify-content:space-between;">
+      <span class="bracket-header">[ system_configuration ]</span>
+      <a class="settings-mark" href="https://kwasikontor.dev" target="_blank" rel="noopener noreferrer" aria-label="built by Kwasi M. Kontor">
+        <img src="/butterfly-sm.gif" alt="" />
+        <span class="settings-sig">..: :..</span>
+      </a>
+    </div>
+    <div style="position:relative;width:88px;height:88px;margin:14px auto 4px;">
+      <canvas id="settings-ouro" style="position:absolute;inset:0;width:100%;height:100%;" aria-hidden="true"></canvas>
+    </div>
+    <div class="settings-scroll"><div class="settings-inner">
+
+      <div class="settings-section">
+        <div class="settings-section-title">profile</div>
+        <div class="field"><label for="set-name">name</label><input id="set-name" maxlength="40" /></div>
+        <div class="field"><label for="set-date">sobriety date</label><input id="set-date" type="date" /></div>
+        <div class="field"><label for="set-breath">breath technique</label>
+          <select id="set-breath">
+            <option value="4-7-8">4-7-8 — settle</option>
+            <option value="box">box — steady</option>
+            <option value="coherent">coherent — sustain</option>
+          </select>
+        </div>
+        <div class="toggle-row">
+          <span style="font-size:11px;letter-spacing:2px;color:var(--text-muted);">haptics (simulated)</span>
+          <button class="toggle" id="set-haptics" role="switch" aria-checked="true" aria-label="haptics"></button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">sponsor / sponsee</div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          pair with one trusted person and send encrypted check-in messages between just
+          the two of you — no account, no company server involved.
+        </div>
+        <div class="pill-row">
+          <button class="ghost-btn" data-nav="pairing">open pairing →</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">clinician access</div>
+        <div class="field">
+          <label for="set-clinician-pin">clinician PIN <span style="opacity:.55;font-size:9px;letter-spacing:1px;">— optional, locks the mirror + vault</span></label>
+          <div style="display:flex;gap:8px;">
+            <input id="set-clinician-pin" type="password" inputmode="numeric" maxlength="4" placeholder="4 digits" style="flex:1;min-width:0;width:auto;" />
+          </div>
+          <div class="pill-row" style="margin-top:10px;">
+            <button class="ghost-btn" id="clinician-pin-save">set</button>
+            <button class="ghost-btn" id="clinician-pin-clear">clear</button>
+          </div>
+          <div id="clinician-pin-status" style="font-size:10px;letter-spacing:1px;opacity:.6;margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">backup &amp; restore</div>
+        <div class="field">
+          <label for="backup-code-out">backup code <span style="opacity:.55;font-size:9px;letter-spacing:1px;">— your data, portable. this device only, until you copy it somewhere</span></label>
+          <textarea id="backup-code-out" readonly rows="3" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text-muted);font-family:'Courier Prime',monospace;font-size:10px;padding:10px 12px;resize:none;"></textarea>
+        </div>
+        <div class="field">
+          <label for="backup-code-in">restore from a code</label>
+          <textarea id="backup-code-in" placeholder="paste a backup code here" rows="3" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:10px;padding:10px 12px;resize:none;"></textarea>
+        </div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="backup-copy-btn">copy code</button>
+          <button class="ghost-btn" id="backup-restore-btn">restore this code</button>
+          <a class="ghost-btn" href="recovery-routine.ics" download style="text-decoration:none;display:inline-flex;align-items:center;">add daily routine to calendar</a>
+        </div>
+      </div>
+
+      <div class="settings-section danger">
+        <div class="settings-section-title">preview &amp; danger zone</div>
+        <div class="pill-row">
+          <button class="ghost-btn" id="seed-btn">preview with 30 days of sample history</button>
+          <button class="ghost-btn" id="clear-demo-btn">clear seeded preview entries</button>
+        </div>
+        <div style="font-size:10px;letter-spacing:1px;color:var(--text-muted);opacity:.6;">preview replaces your real entries and sobriety date with fake ones — clearing removes only the sample data, your real sobriety date isn't touched</div>
+        <button class="danger-btn" id="purge-btn" style="width:100%;">purge local memory</button>
+      </div>
+
+      <div class="settings-footer">
+        all data lives on this device only · nothing is transmitted<br/>
+        <a class="settings-glow-link" href="/kataleya-clinician.html">for clinicians →</a>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ══ mirror v2 ══ -->
+  <section class="screen" id="screen-mirror">
+    <div class="mirror-crt"></div>
+    <div class="mirror-vignette"></div>
+    <div id="mirror-scanline"></div>
+    <div class="mirror-scroll" id="mirror-scroll"><div class="mirror-inner">
+      <div class="mirror-header">
+        <span class="lbl">[ sys_diagnostic ]</span>
+        <span class="mirror-status"><span class="status-dot"></span>online<span id="mirror-lock-btn" title="lock now">🔒</span></span>
+      </div>
+
+      <div class="mirror-pin-gate" id="mirror-pin-gate">
+        <div class="mirror-pin-box">
+          <div class="mp-lbl">[ locked ]</div>
+          <div class="mp-prompt">enter the clinician PIN to reveal diagnostics</div>
+          <div class="mp-dots">
+            <span class="mp-dot" id="mirror-pin-dot-0"></span>
+            <span class="mp-dot" id="mirror-pin-dot-1"></span>
+            <span class="mp-dot" id="mirror-pin-dot-2"></span>
+            <span class="mp-dot" id="mirror-pin-dot-3"></span>
+          </div>
+          <div class="mp-err" id="mirror-pin-err"></div>
+          <div class="mp-keypad" id="mirror-pin-keypad">
+            <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+            <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+            <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+            <button data-k="clr" class="mp-ghost">clr</button><button data-k="0">0</button><button data-k="back" class="mp-ghost">⌫</button>
+          </div>
+          <div class="mp-hint">shown once, on this device only · not a substitute for clinical security</div>
+        </div>
+      </div>
+
+      <div class="vessel-wrap">
+        <div class="vessel-glow"></div>
+        <svg id="vessel-svg" viewBox="0 0 280 520" aria-label="wireframe vessel"></svg>
+      </div>
+
+      <div class="diag-grid">
+        <div class="diag-cell">
+          <div class="diag-lbl">[ days_sober ]</div>
+          <div class="diag-val" id="m-days">—</div>
+          <div id="m-days-stage" style="font-size:9px;letter-spacing:2px;text-transform:lowercase;color:var(--phosphor);opacity:.75;margin-top:-4px;margin-bottom:4px;"></div>
+          <div class="diag-sub"><div class="diag-bar-track"><div class="diag-bar-fill" id="m-days-bar"></div></div></div>
+        </div>
+        <div class="diag-cell">
+          <div class="diag-lbl">[ phase ]</div>
+          <div class="diag-val" id="m-phase">—</div>
+          <div class="diag-sub" id="m-phase-bars"></div>
+        </div>
+        <div class="diag-cell">
+          <div class="diag-lbl">[ mood_trend ]</div>
+          <div class="diag-val" id="m-trend">—</div>
+          <div class="diag-sub" id="m-trend-bars"></div>
+        </div>
+        <div class="diag-cell">
+          <div class="diag-lbl">[ last_bridge ]</div>
+          <div class="diag-val" id="m-last">—</div>
+          <div class="diag-sub"><div class="diag-bar-track"><div class="diag-bar-fill" id="m-last-bar"></div></div></div>
+        </div>
+      </div>
+
+      <div class="ekg-block">
+        <svg id="ekg-svg" viewBox="0 0 400 64" preserveAspectRatio="none"></svg>
+        <div class="ekg-caption"><span>[ mood_telemetry — 30d ]</span><span id="ekg-n">0 samples</span></div>
+      </div>
+
+      <div class="mirror-logs">
+        <div class="mirror-log-title">[ system_log ]</div>
+        <div id="mirror-log"></div>
+      </div>
+
+      <div class="mirror-footer">
+        <span id="mirror-name">// awaiting attunement</span>
+        <span>[ swipe right to return ]</span>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- dock -->
+  <nav id="dock" aria-label="navigation">
+    <button class="dock-btn" data-nav="room" title="room">◉</button>
+    <button class="dock-btn" data-nav="bridge" title="bridge">≈</button>
+    <button class="dock-btn" data-nav="cover" title="cocoon">☾</button>
+    <button class="dock-btn" data-nav="terminal" title="terminal">▤</button>
+    <button class="dock-btn" data-nav="mirror" title="mirror">⌖</button>
+    <button class="dock-btn" data-nav="burn" title="burn">∿</button>
+    <button class="dock-btn" data-nav="scars" title="scars">✕</button>
+    <button class="dock-btn" data-nav="vault" title="vault">▣</button>
+    <button class="dock-btn" data-nav="settings" title="settings">⚙</button>
+  </nav>
+
+  <div id="toast"></div>
+
+  <div class="breathe-overlay" id="breathe-overlay">
+    <button class="breathe-exit" id="breathe-exit">close ✕</button>
+    <div class="breathe-ring-wrap">
+      <svg viewBox="0 0 200 200">
+        <circle id="breathe-orb-fill" cx="100" cy="100" r="70"/>
+        <circle id="breathe-ring" cx="100" cy="100" r="90" pathLength="100" stroke-dasharray="100" stroke-dashoffset="0"/>
+      </svg>
+    </div>
+    <div class="breathe-word" id="breathe-word">breathe in</div>
+    <div class="breathe-sub" id="breathe-sub"></div>
+    <div class="breathe-tech" id="breathe-tech"></div>
+  </div>
+
+  <div class="wave-overlay" id="wave-overlay">
+    <button class="breathe-exit" id="wave-exit">close ✕</button>
+    <div class="wave-prompt" id="wave-prompt">how strong is it right now?</div>
+    <div class="wave-scale" id="wave-scale"></div>
+    <div class="wave-ride" id="wave-ride">
+      <div class="wave-orb-wrap" id="wave-orb-wrap">
+        <svg class="wave-ring-wrap" id="wave-orb" viewBox="0 0 200 200"></svg>
+      </div>
+      <div class="wave-word" id="wave-word">it rises.</div>
+    </div>
+    <button class="breathe-link" id="wave-skip">i'm okay now →</button>
+  </div>
+
+  <div class="ground-overlay" id="ground-overlay">
+    <button class="breathe-exit" id="ground-exit">close ✕</button>
+    <div class="ground-stage" id="ground-stage">
+      <div class="ground-count" id="ground-count">5</div>
+      <div class="ground-sense" id="ground-sense">sight</div>
+      <div class="ground-prompt" id="ground-prompt"></div>
+      <div class="ground-dots" id="ground-dots"></div>
+      <div class="ground-ack" id="ground-ack"></div>
+      <div class="ground-hint" id="ground-hint">tap once for each one you notice</div>
+    </div>
+    <button class="breathe-link" id="ground-skip">not now →</button>
+  </div>
+</div>
+
+<!-- vendored (not CDN) X25519 + XChaCha20-Poly1305 for sponsor/sponsee
+     pairing -- see vendor/NOTICE.md for why this is a local file instead
+     of a script tag pointed at unpkg/jsdelivr. Must load before the main
+     script below, which reads window.KataleyaCrypto at call time, not
+     just at parse time, so plain script-order blocking is sufficient. -->
+<script src="vendor/kataleya-crypto.bundle.js"></script>
+<script>
+'use strict';
+/* hex → "R,G,B" string for CSS var injection */
+function hexToRgb(hex){
+  hex = hex.replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const n=parseInt(hex,16);
+  return [(n>>16)&255,(n>>8)&255,n&255].join(',');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   kataleya — web demo
+   faithful port of the mobile app. localstorage instead of sqlite.
+   redesigned: ouroboros v3 (canvas serpent) · mirror v3 (phase-aware)
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── palettes (verbatim from constants/palettes.ts) ── */
+const PHASES = {
+  choice:        { key:'choice',        accent:'#c8f563', displayName:'choice',        time:'morning',   existential:'still here, still choosing', breathMs:3000, shadow:'#5a7a10', highlight:'#deff88', ambient:'#080f02', rim:'#f0ffe0' },
+  desire:        { key:'desire',        accent:'#f6c177', displayName:'desire',        time:'afternoon', existential:'the work continues',         breathMs:2500, shadow:'#8a5a00', highlight:'#ffd898', ambient:'#0f0a02', rim:'#fff8e8' },
+  'still-pine':  { key:'still-pine',   accent:'#9ccfd8', displayName:'still-pine',    time:'evening',   existential:'the threshold, held',        breathMs:3500, shadow:'#1a5a68', highlight:'#c8f0f8', ambient:'#020d10', rim:'#e8f8ff' },
+  nyx:           { key:'nyx',           accent:'#eb6f92', displayName:'nyx',           time:'night',     existential:'no performance required',    breathMs:4000, shadow:'#8a1840', highlight:'#ffaac8', ambient:'#0a0205', rim:'#ffe8f0' },
+};
+function getPhaseKey(h){ if(h>=6&&h<11)return'choice'; if(h>=11&&h<17)return'desire'; if(h>=17&&h<21)return'still-pine'; return'nyx'; }
+
+/* ── phrases (from constants/phrases.ts) ── */
+const ROOM_PHRASES = {
+  choice: ['still here. still breathing.\nmorning just joined us.','life rewritten by choice.','this morning is the only one\nlike it.',"the day hasn't decided anything yet.",'what you carry into today\nis yours to name.','amor fati.'],
+  desire: ["i'm here.","you're still here.\nthat counts.",'not every hour needs to be a turning point.','maintenance is its own kind of grace.','ordinary days are the ones that hold you.','the work continues.\nso do you.'],
+  'still-pine': ['the threshold. hold.','you did enough.',"whatever you're setting down —\nit's okay to set it down.","evening doesn't need an answer.\njust a breath.",'this feeling has a lifespan.\noutlast it.','the day is closing.\nyou are allowed to close with it.'],
+  nyx: ["i don't sleep.",'no performance required.','2am always ends.','silence is not emptiness.','the garden is open.\neven now.','rest is not surrender.\nit is preparation.'],
+};
+const COVER_PHRASES = ['amor fati.', ...ROOM_PHRASES.nyx, "the garden doesn't judge the winter.", 'stay with me.', "the river knows you were coming.",
+  "you don't have to perform stillness.", "the dark isn't asking anything of you.", "whatever hour this is, it's allowed to be hard.",
+  "you made it here. that's the whole task.", "not even sleep is required of you right now.", "the quiet isn't empty. i'm in it with you.",
+  "this passes. it always has.", "you're not the only one still awake.", "hold on — not forever, just until morning."];
+
+// One-time greeting on entry, only if the real clock is actually in the
+// deep-night window (~1-4am) — proof this is reading live time, not a
+// static loop that would say the same thing at 2pm as at 2am. Shown once
+// as the first line seen, then normal tap-cycling continues underneath.
+function deepHourPhrase(){
+  const h = new Date().getHours();
+  if(h>=1 && h<4) return "this isn't a recording. it really is this late, right now, with you.";
+  return null;
+}
+
+/* ── vault (localstorage — snake_case keys are data internals) ── */
+const store = {
+  get(k, fb){ try{ const v = localStorage.getItem('kataleya_'+k); return v===null?fb:JSON.parse(v); }catch(e){ return fb; } },
+  set(k, v){ try{ localStorage.setItem('kataleya_'+k, JSON.stringify(v)); }catch(e){} },
+  wipe(){ Object.keys(localStorage).filter(k=>k.startsWith('kataleya_')).forEach(k=>localStorage.removeItem(k)); },
+};
+const getAttunement = () => store.get('attunement', null);
+const setAttunement = (a) => store.set('attunement', a);
+const getMoodLogs   = () => store.get('mood_logs', []);
+const addMoodLog    = (v) => { const l=getMoodLogs(); l.unshift({mood_value:v, logged_at:Date.now(), phase:state.phase}); store.set('mood_logs', l.slice(0,500)); };
+const getJournal    = () => store.get('journal', []);
+const addJournal    = (t) => { const j=getJournal(); j.unshift({text:t, at:Date.now(), phase:state.phase}); store.set('journal', j.slice(0,200)); };
+const getUrges      = () => store.get('urge_logs', []);
+const addUrge       = (before, after) => { const u=getUrges(); u.unshift({at:Date.now(), phase:state.phase, before, after}); store.set('urge_logs', u.slice(0,200)); };
+const getGroundings = () => store.get('grounding_logs', []);
+const addGrounding  = () => { const g=getGroundings(); g.unshift({at:Date.now(), phase:state.phase}); store.set('grounding_logs', g.slice(0,200)); };
+
+/* ── clinician PIN — optional lock on the mirror + vault screens ──
+   patient sets a PIN once; the mirror (their own real diagnostic
+   dashboard) AND the vault (their actual journal entries) then require
+   it on every visit, so the deliberate act of unlocking it *is* the
+   moment of sharing it with someone else. One PIN, one shared unlock
+   for the session — entering it once covers both screens, not twice.
+   no PIN set = both behave exactly as before, zero friction. */
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+const getClinicianPinHash = () => store.get('clinician_pin_hash', null);
+const clinicianUnlockedThisSession = () => sessionStorage.getItem('kataleya_clinician_unlocked') === '1';
+const clinicianLocked = () => !!getClinicianPinHash() && !clinicianUnlockedThisSession();
+
+/* ── re-entry (has it been a while?) ── */
+const REENTRY_HOURS = 4;
+const _lastOpen = store.get('last_open', null);
+const isReentry = _lastOpen !== null && (Date.now() - _lastOpen) / 3600000 >= REENTRY_HOURS;
+store.set('last_open', Date.now());
+
+/* ── state ── */
+const state = {
+  screen: null,
+  phase: getPhaseKey(new Date().getHours()),
+  phaseOverride: null,
+  bootAt: Date.now(),
+  breath: 0, // 0..1 continuous
+  haptics: store.get('haptics', true),
+  breathTechnique: store.get('breath_technique', '4-7-8'),
+  isReentry,
+};
+const palette = () => PHASES[state.phaseOverride || state.phase];
+const $ = (id) => document.getElementById(id);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function applyPhaseVars(){
+  const p = palette();
+  const r = document.documentElement.style;
+  r.setProperty('--accent', p.accent);
+  r.setProperty('--shadow', p.shadow);
+  r.setProperty('--highlight', p.highlight);
+  r.setProperty('--ambient', p.ambient);
+  r.setProperty('--rim', p.rim);
+}
+
+function toast(msg, ms=2400){
+  const t = $('toast'); t.textContent = msg; t.classList.add('lit');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('lit'), ms);
+}
+function haptic(){ if(state.haptics && navigator.vibrate) navigator.vibrate(12); }
+
+/* ── helpers ── */
+function daysSince(iso){ const ms = Date.now() - new Date(iso).getTime(); return Math.max(0, Math.floor(ms/86400000)); }
+function timeAgo(ms){
+  const m = Math.floor((Date.now()-ms)/60000);
+  if(m<1) return 'now'; if(m<60) return m+'m';
+  const h = Math.floor(m/60); if(h<24) return h+'h';
+  return Math.floor(h/24)+'d';
+}
+function moodTrend(logs){
+  if(!logs.length) return '—';
+  const avg = logs.reduce((s,l)=>s+l.mood_value,0)/logs.length;
+  if(avg>=4.5) return 'ascendant'; if(avg>=3.5) return 'stable';
+  if(avg>=2.5) return 'unsettled'; return 'critical';
+}
+/* seasons, not streaks — a raw day count is a streak-counter; this is
+   the same number reframed as organic growth instead of a chain not to
+   break. thresholds (30/90) match common recovery-community milestones. */
+function growthStage(days){
+  if(days <= 30) return 'the seed';
+  if(days <= 90) return 'the root';
+  return 'the bloom';
+}
+/* the simplest of three specified insight formulas — phase/mood
+   correlation. confidence-gated: needs at least 3 logs in 2+ phases
+   and a real gap (>=1.0 on the 1-5 scale) between the easiest and
+   hardest phase, or it says nothing rather than guess from noise. */
+function phaseMoodInsight(logs){
+  const byPhase = {};
+  logs.forEach(l=>{ if(!l.phase) return; (byPhase[l.phase] = byPhase[l.phase]||[]).push(l.mood_value); });
+  const phases = Object.keys(byPhase).filter(p=>byPhase[p].length>=3);
+  if(phases.length < 2) return null;
+  const avgs = phases.map(p=>({phase:p, avg: byPhase[p].reduce((s,v)=>s+v,0)/byPhase[p].length}));
+  avgs.sort((a,b)=>a.avg-b.avg);
+  const hardest = avgs[0], easiest = avgs[avgs.length-1];
+  if(easiest.avg - hardest.avg < 1.0) return null;
+  return `${hardest.phase} tends to be harder — ${easiest.phase} tends to be easier`;
+}
+function fmtDate(ms){
+  const d = new Date(ms);
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}).toLowerCase()+' · '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}).toLowerCase();
+}
+const esc = (s) => s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ════════════════════════════════════════
+   orb — 5 svg membrane layers (haze/body/rim/iris/nucleus)
+   ════════════════════════════════════════ */
+function buildOrb(svg, opts={}){
+  const uid = 'o'+Math.random().toString(36).slice(2,7);
+  const p = palette();
+  svg.innerHTML = `
+    <defs>
+      <radialGradient id="${uid}-haze" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="${p.accent}" stop-opacity="0.20"/>
+        <stop offset="70%" stop-color="${p.accent}" stop-opacity="0.05"/>
+        <stop offset="100%" stop-color="${p.accent}" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="${uid}-body" cx="42%" cy="36%" r="70%">
+        <stop offset="0%" stop-color="${p.highlight}" stop-opacity="0.55"/>
+        <stop offset="45%" stop-color="${p.accent}" stop-opacity="0.30"/>
+        <stop offset="100%" stop-color="${p.shadow}" stop-opacity="0.15"/>
+      </radialGradient>
+      <radialGradient id="${uid}-iris" cx="46%" cy="42%" r="45%">
+        <stop offset="0%" stop-color="${p.rim}" stop-opacity="0.6"/>
+        <stop offset="55%" stop-color="${p.highlight}" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="${p.accent}" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="${uid}-nuc" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="${p.rim}" stop-opacity="0.95"/>
+        <stop offset="60%" stop-color="${p.highlight}" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="${p.accent}" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle class="orb-haze" cx="100" cy="100" r="96" fill="url(#${uid}-haze)"/>
+    <g class="orb-breather" style="transform-origin:100px 100px;">
+      <circle cx="100" cy="100" r="62" fill="url(#${uid}-body)"/>
+      <circle cx="100" cy="100" r="62" fill="none" stroke="${p.rim}" stroke-opacity="0.25" stroke-width="0.8"/>
+      <circle cx="100" cy="100" r="40" fill="url(#${uid}-iris)"/>
+      <circle class="orb-nucleus" cx="97" cy="94" r="14" fill="url(#${uid}-nuc)" style="transform-origin:97px 94px;"/>
+      <ellipse cx="82" cy="76" rx="12" ry="7" fill="${p.rim}" opacity="0.30" transform="rotate(-28 82 76)"/>
+    </g>`;
+  return svg;
+}
+
+/* ════════════════════════════════════════
+   OUROBOROS v3 — serpent of hours (Canvas)
+   single drawCall per frame. no DOM writes.
+   comet: head at now, tail 7h behind, faint thread ahead.
+   scars: fractured arcs at hours of low mood / urges.
+   ════════════════════════════════════════ */
+const SEGMENTS = 96;
+
+function buildOuroboros(canvas){
+  // size to device
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  const parent = canvas.parentElement;
+  const size = Math.min(parent.clientWidth||400, parent.clientHeight||400, 400);
+  canvas.width  = Math.round(size * dpr);
+  canvas.height = Math.round(size * dpr);
+  canvas.style.width  = size + 'px';
+  canvas.style.height = size + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  canvas._ctx  = ctx;
+  canvas._size = size;
+  canvas._dpr  = dpr;
+}
+
+function scarsFromLogs(){
+  const set = new Set();
+  getMoodLogs().filter(l=>l.mood_value<=2).slice(0,20).forEach(l=>set.add(new Date(l.logged_at).getHours()));
+  getUrges().slice(0,20).forEach(u=>set.add(new Date(u.at).getHours()));
+  return set;
+}
+
+let swallowStart = -1;
+
+function animateOuroboros(canvas, now){
+  if(!canvas._ctx || !canvas.isConnected) return;
+
+  const ctx  = canvas._ctx;
+  const size = canvas._size;
+  const cx   = size/2, cy = size/2;
+  const R    = size * 0.415;
+
+  const p      = palette();
+  const d      = new Date();
+  const hourF  = d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600;
+  const nowSeg = (hourF/24) * SEGMENTS;
+  // noon at the top, midnight at the bottom — matches the sun's real path
+  // (overhead at noon, nadir at midnight), not a plain 24h clock face
+  const nowAngle = (hourF/24) * Math.PI*2 + Math.PI/2;
+  const breath   = state.breath;
+  const scars    = canvas._scarCache || (canvas._scarCache = scarsFromLogs());
+  const tailLen  = SEGMENTS * (7/24); // 7-hour comet tail
+
+  ctx.clearRect(0, 0, size, size);
+
+  // — ambient halo —
+  const halo = ctx.createRadialGradient(cx,cy,R*0.6, cx,cy,R*1.18);
+  halo.addColorStop(0,'transparent');
+  halo.addColorStop(0.72, hexRgba(p.accent,0.04+breath*0.07));
+  halo.addColorStop(1,'transparent');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(cx,cy,R*1.18,0,Math.PI*2); ctx.fill();
+
+  // — ring segments —
+  const segRad = (Math.PI*2) / SEGMENTS;
+  const capFrac = 0.80; // fraction of segment that's drawn (gap = 0.20)
+
+  for(let i=0;i<SEGMENTS;i++){
+    const a0 = (i/SEGMENTS)*Math.PI*2 + Math.PI/2;
+    const a1 = a0 + segRad * capFrac;
+
+    let behind = nowSeg - i; if(behind < 0) behind += SEGMENTS;
+    const hour = Math.floor(i/(SEGMENTS/24));
+    const isScar = scars.has(hour);
+
+    let alpha, sw;
+    if(behind <= tailLen){
+      const t = 1 - behind/tailLen;
+      alpha = 0.07 + Math.pow(t,1.7)*(0.62 + breath*0.35);
+      sw = behind <= tailLen*0.12 ? 1.8+breath*1.8 : 1.1;
+    } else {
+      alpha = 0.04 + breath*0.02;
+      sw = 0.9;
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx,cy,R,a0,a1);
+    ctx.lineWidth = sw;
+    ctx.lineCap = 'round';
+
+    if(isScar){
+      // same moss-green as the scars-list markers (#7a9b6e) -- a scar hour
+      // used to render as a dim dashed dark line here, indistinguishable
+      // from a rendering glitch. now it's unmistakably the same "moss
+      // grows on it" mark everywhere it appears, with a soft glow instead
+      // of just a gap in the ring's light.
+      //
+      // 2026-07-28: during "choice" phase the ring's own accent (#c8f563,
+      // a yellow-green) sits close enough to this moss-green to camouflage
+      // the mark. Deliberately did NOT make the scar color shift per phase
+      // to fix this -- a scar is meant to read the same regardless of the
+      // hour it's viewed at, not blend into whichever mood-color happens
+      // to be active (see the scars-list CSS comment: "so the trace reads
+      // as growth regardless of what hour it's viewed at"). Instead, a
+      // dark outline stroke underneath separates it from ANY background
+      // by brightness, not by hue -- fixes the real bug without giving up
+      // the identity the color was chosen to have.
+      ctx.setLineDash([2,3]);
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.lineWidth = sw + 1.6;
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+
+      ctx.strokeStyle = hexRgba('#7a9b6e', 0.4 + Math.random()*0.15);
+      ctx.lineWidth = sw + 0.6;
+      ctx.shadowColor = 'rgba(122,155,110,0.55)';
+      ctx.shadowBlur = 3;
+    } else {
+      ctx.strokeStyle = hexRgba(p.accent, alpha);
+      ctx.shadowBlur = 0;
+      ctx.setLineDash([]);
+    }
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.setLineDash([]);
+
+  // — major hour ticks 0/6/12/18 —
+  ctx.strokeStyle = hexRgba(p.accent,0.24);
+  ctx.lineWidth = 0.7;
+  for(let h=0;h<24;h+=6){
+    const a=(h/24)*Math.PI*2+Math.PI/2;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a)*(R-9), cy+Math.sin(a)*(R-9));
+    ctx.lineTo(cx+Math.cos(a)*(R-3), cy+Math.sin(a)*(R-3));
+    ctx.stroke();
+  }
+
+  // — head glow + comet —
+  const hx = cx+Math.cos(nowAngle)*R;
+  const hy = cy+Math.sin(nowAngle)*R;
+  const glowR = 12+breath*11;
+
+  const hGrad = ctx.createRadialGradient(hx,hy,0, hx,hy,glowR);
+  hGrad.addColorStop(0, hexRgba(p.rim,0.9));
+  hGrad.addColorStop(0.4, hexRgba(p.highlight,0.55));
+  hGrad.addColorStop(1,'transparent');
+
+  ctx.shadowColor = p.accent;
+  ctx.shadowBlur  = 14+breath*16;
+  ctx.fillStyle   = hGrad;
+  ctx.beginPath(); ctx.arc(hx,hy,glowR,0,Math.PI*2); ctx.fill();
+
+  ctx.shadowBlur  = 6+breath*8;
+  ctx.fillStyle   = p.rim;
+  ctx.beginPath(); ctx.arc(hx,hy,3.0+breath*2.6,0,Math.PI*2); ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // — seconds spark: continuously orbits the ring like a clock's second
+  // hand, always visible — separate from the head's real once-per-day
+  // creep around the dial, which is far too slow to read at a glance —
+  // deliberately NOT gated behind reduceMotion. This is a single small
+  // dot drifting around a large, fixed ring over 12 seconds — slow,
+  // small-amplitude, non-flashing. prefers-reduced-motion exists for
+  // motion that can cause real discomfort (parallax, spinning, rapid
+  // flashing); this isn't that, and disabling it just made the ring
+  // read as broken/static instead of alive.
+  const SPARK_LAP_MS = 12000;
+  {
+    const t  = (now % SPARK_LAP_MS) / SPARK_LAP_MS;
+    const sa = nowAngle + t*Math.PI*2;
+    const sx = cx+Math.cos(sa)*R, sy = cy+Math.sin(sa)*R;
+    ctx.shadowColor = p.rim;
+    ctx.shadowBlur  = 10;
+    ctx.globalAlpha = 0.75 + Math.sin(t*Math.PI*2)*0.2;
+    ctx.fillStyle   = p.rim;
+    ctx.beginPath(); ctx.arc(sx,sy,3.0,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur  = 0;
+  }
+}
+
+/* hex → rgba() string */
+function hexRgba(hex,a){
+  hex = hex.replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const n=parseInt(hex,16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a.toFixed(3)})`;
+}
+
+/* global breath loop
+   ════════════════════════════════════════ */
+const BREATH_TECHNIQUES = {
+  '4-7-8':    { in:4000, hold1:7000, out:8000, hold2:0    },
+  'box':      { in:4000, hold1:4000, out:4000, hold2:4000 },
+  'coherent': { in:5500, hold1:0,    out:5500, hold2:0    },
+};
+function breathCycleMs(t){ const b = BREATH_TECHNIQUES[t] || BREATH_TECHNIQUES.coherent; return b.in+b.hold1+b.out+b.hold2; }
+// clean 0..1 envelope, no jitter — exact technique shape, used by the
+// practice overlay where precision matters more than ambient "aliveness"
+function breathEnvelope(ts){
+  const b = BREATH_TECHNIQUES[state.breathTechnique] || BREATH_TECHNIQUES.coherent;
+  const pos = ts % breathCycleMs(state.breathTechnique);
+  if(pos < b.in) return pos/b.in;
+  if(pos < b.in+b.hold1) return 1;
+  if(pos < b.in+b.hold1+b.out) return 1 - (pos-b.in-b.hold1)/b.out;
+  return 0;
+}
+// which segment of the cycle ts falls in, + ms remaining in it — drives
+// the practice overlay's word/countdown
+function breathSegment(ts){
+  const b = BREATH_TECHNIQUES[state.breathTechnique] || BREATH_TECHNIQUES.coherent;
+  const pos = ts % breathCycleMs(state.breathTechnique);
+  if(pos < b.in) return { name:'in', remaining: b.in-pos };
+  if(pos < b.in+b.hold1) return { name:'hold', remaining: b.in+b.hold1-pos };
+  if(pos < b.in+b.hold1+b.out) return { name:'out', remaining: b.in+b.hold1+b.out-pos };
+  return { name: b.hold2 ? 'hold' : 'in', remaining: breathCycleMs(state.breathTechnique)-pos };
+}
+function breathValue(ts){
+  const v = breathEnvelope(ts);
+  // a small constant pulse riding on top of the hold segments — the room
+  // is always visibly alive, never frozen, even mid-hold
+  const life = Math.sin(ts/1100) * 0.12;
+  return Math.min(1, Math.max(0, v + life));
+}
+const liveOrbs = new Set();
+const liveOuros = new Set();
+function breathLoop(ts){
+  state.breath = breathValue(ts);
+  const scale = 1 + state.breath*0.09;
+  liveOrbs.forEach(svg=>{
+    if(!svg.isConnected) return liveOrbs.delete(svg);
+    const b = svg.querySelector('.orb-breather');
+    const n = svg.querySelector('.orb-nucleus');
+    if(b) b.style.transform = `scale(${scale})`;
+    if(n) n.style.transform = `scale(${1 + (1-state.breath)*0.22})`; // nucleus counter-breathes
+    const h = svg.querySelector('.orb-haze');
+    if(h) h.setAttribute('opacity', (0.6 + state.breath*0.4).toFixed(2));
+  });
+  liveOuros.forEach(svg=>animateOuroboros(svg, ts));
+  requestAnimationFrame(breathLoop);
+}
+requestAnimationFrame(breathLoop);
+
+/* ════════════════════════════════════════
+   breathe overlay — the actual practice screen
+   ════════════════════════════════════════ */
+const BREATH_WORDS = { in:'breathe in', hold:'hold', out:'breathe out' };
+let breatheOpen = false;
+const RING_CIRC = 100; // pathLength="100" on #breathe-ring
+function renderBreatheTech(){
+  const wrap = $('breathe-tech'); wrap.innerHTML = '';
+  ['4-7-8','box','coherent'].forEach(t=>{
+    const b = document.createElement('button');
+    b.textContent = t; b.classList.toggle('on', t===state.breathTechnique);
+    b.addEventListener('click', ()=>{
+      state.breathTechnique = t; store.set('breath_technique', t);
+      renderBreatheTech();
+      if($('breath-select')) renderTerminal();
+    });
+    wrap.appendChild(b);
+  });
+}
+function breatheFrame(ts){
+  if(!breatheOpen) return;
+  const env = breathEnvelope(ts);
+  const seg = breathSegment(ts);
+  $('breathe-orb-fill').style.transform = `scale(${0.7 + env*0.5})`;
+  $('breathe-ring').setAttribute('stroke-dashoffset', String(RING_CIRC * (1 - env)));
+  $('breathe-word').textContent = BREATH_WORDS[seg.name];
+  $('breathe-sub').textContent = Math.ceil(seg.remaining/1000) + 's · ' + state.breathTechnique;
+  requestAnimationFrame(breatheFrame);
+}
+function openBreathe(){
+  breatheOpen = true;
+  renderBreatheTech();
+  $('breathe-overlay').classList.add('open');
+  haptic();
+  requestAnimationFrame(breatheFrame);
+}
+function closeBreathe(){
+  breatheOpen = false;
+  $('breathe-overlay').classList.remove('open');
+}
+$('breathe-open-bridge').addEventListener('click', openBreathe);
+$('breathe-open-term').addEventListener('click', openBreathe);
+// cocoon listens for pointerdown/pointerup on the whole screen for its own
+// tap-to-cycle / hold-to-return gesture — stop this button's taps from
+// bubbling into that
+$('breathe-open-cover').addEventListener('pointerdown', e=>e.stopPropagation());
+$('breathe-open-cover').addEventListener('pointerup', e=>e.stopPropagation());
+$('breathe-open-cover').addEventListener('click', e=>{ e.stopPropagation(); openBreathe(); });
+// single-tap exit — the hold-to-return gesture alone was the only way out of
+// the cocoon (dock is hidden here), and holding a mouse button for 2.5s
+// straight is awkward on desktop and hard to figure out under stress
+$('cocoon-exit').addEventListener('pointerdown', e=>e.stopPropagation());
+$('cocoon-exit').addEventListener('pointerup', e=>e.stopPropagation());
+$('cocoon-exit').addEventListener('click', e=>{ e.stopPropagation(); go('room'); });
+$('breathe-exit').addEventListener('click', closeBreathe);
+
+/* ════════════════════════════════════════
+   wave — riding out an urge
+   a companion moment, not a worksheet: two taps and a wait, no required
+   text, exit anytime. "urges peak and pass like waves" — the CBT idea,
+   none of the clinical framing.
+   ════════════════════════════════════════ */
+const WAVE_LABELS = ['ripple','wave','swell','breaker','storm'];
+const WAVE_WORDS = ['it rises.','it crests.','hold.','it passes.'];
+const WAVE_RIDE_MS = 75000;
+let waveBefore = null, waveRAF = null, waveT0 = 0, waveCrested = false;
+
+/* real river-cresting has three distinct phases, not one symmetric bump:
+   a rise to peak, a held crest (the peak is a measured DURATION, not an
+   instant), then a slower post-crest recession. this mirrors that shape
+   instead of a flat sine, so "it rises. it crests. it passes." is something
+   the orb actually does, not just narrates. */
+const WAVE_RISE_END = 0.30, WAVE_HOLD_END = 0.55;
+function easeInOutCubic(x){ return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2; }
+function easeOutCubic(x){ return 1 - Math.pow(1 - x, 3); }
+function waveCrestLevel(t){
+  if (t < WAVE_RISE_END){
+    return easeInOutCubic(t / WAVE_RISE_END);
+  }
+  if (t < WAVE_HOLD_END){
+    // held near the peak, not perfectly frozen -- a small live wobble so
+    // the "hold" reads as sustained tension, not a paused animation
+    const u = (t - WAVE_RISE_END) / (WAVE_HOLD_END - WAVE_RISE_END);
+    return 1 - Math.abs(Math.sin(u * Math.PI * 3)) * 0.05;
+  }
+  const u = (t - WAVE_HOLD_END) / (1 - WAVE_HOLD_END);
+  return 1 - easeOutCubic(u); // gradual recession -- slower give than the rise
+}
+
+function waveShowScale(promptText, onPick){
+  cancelAnimationFrame(waveRAF);
+  $('wave-prompt').style.display = 'block';
+  $('wave-scale').style.display = 'flex';
+  $('wave-ride').classList.remove('on');
+  $('wave-skip').style.display = 'none';
+  $('wave-prompt').textContent = promptText;
+  const scale = $('wave-scale'); scale.innerHTML = '';
+  WAVE_LABELS.forEach((label, i) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.addEventListener('click', () => onPick(i + 1));
+    scale.appendChild(b);
+  });
+}
+function waveStartRide(){
+  $('wave-prompt').style.display = 'none';
+  $('wave-scale').style.display = 'none';
+  $('wave-ride').classList.add('on');
+  $('wave-skip').style.display = 'block';
+  // a real breathing orb, same as room/bridge/cover -- not a flat filled
+  // circle -- so riding out an urge feels like the same living presence as
+  // the rest of the app, not a separate, simpler widget
+  buildOrb($('wave-orb'));
+  liveOrbs.add($('wave-orb'));
+  waveCrested = false;
+  waveT0 = performance.now();
+  requestAnimationFrame(waveRideFrame);
+}
+function waveRideFrame(ts){
+  if(!$('wave-overlay').classList.contains('open')) return;
+  const t = Math.min(1, (ts - waveT0) / WAVE_RIDE_MS);
+  const level = waveCrestLevel(t);
+  $('wave-orb-wrap').style.transform = `scale(${0.72 + level * 0.5})`;
+  $('wave-word').textContent = WAVE_WORDS[Math.min(WAVE_WORDS.length - 1, Math.floor(t * WAVE_WORDS.length))];
+  // a single felt beat right as the rise tips into the hold -- "it crests."
+  // becomes a moment you notice, not just a line of text changing underneath
+  if(!waveCrested && t >= WAVE_RISE_END){
+    waveCrested = true;
+    haptic();
+    $('wave-orb-wrap').classList.add('crest-flare');
+    setTimeout(() => $('wave-orb-wrap').classList.remove('crest-flare'), 900);
+  }
+  if(t >= 1){ waveFinishRide(); return; }
+  waveRAF = requestAnimationFrame(waveRideFrame);
+}
+function waveFinishRide(){
+  cancelAnimationFrame(waveRAF);
+  waveShowScale('and now?', after => {
+    addUrge(waveBefore, after);
+    toast(`a ${WAVE_LABELS[waveBefore-1]} came — and passed to a ${WAVE_LABELS[after-1]}.`, 4200);
+    closeWave();
+  });
+}
+function openWave(){
+  waveBefore = null;
+  $('wave-overlay').classList.add('open');
+  haptic();
+  waveShowScale('how strong is it right now?', v => { waveBefore = v; waveStartRide(); });
+}
+function closeWave(){
+  cancelAnimationFrame(waveRAF);
+  $('wave-orb-wrap').classList.remove('crest-flare');
+  $('wave-overlay').classList.remove('open');
+}
+$('wave-open-bridge').addEventListener('click', openWave);
+$('wave-exit').addEventListener('click', closeWave);
+$('wave-skip').addEventListener('click', waveFinishRide);
+
+/* ════════════════════════════════════════
+   ground — 5-4-3-2-1, one sense at a time.
+   not a checklist: nothing is typed, nothing is graded. each tap is
+   just an acknowledgment that you noticed something — the counting
+   is the whole point, not what you counted.
+   ════════════════════════════════════════ */
+const GROUND_STAGES = [
+  { n:5, sense:'sight', prompt:"let your eyes land on five things that were already here before you looked.",
+    acks:['seen.','still there.','again.','yes.','found.'] },
+  { n:4, sense:'sound', prompt:"four sounds underneath the one you were already listening to.",
+    acks:['heard.','underneath.','there too.','held.'] },
+  { n:3, sense:'touch', prompt:"three textures under your hands, without reaching far.",
+    acks:['felt.','real.','close.'] },
+  { n:2, sense:'smell', prompt:"two scents, however faint, however far.",
+    acks:['caught.','faint — but there.'] },
+  { n:1, sense:'taste', prompt:"one taste. even just your own breath counts.",
+    acks:['tasted.'] },
+];
+let groundStageIdx = 0;
+let groundTapCount = 0;
+function groundRenderStage(){
+  const s = GROUND_STAGES[groundStageIdx];
+  $('ground-count').textContent = s.n;
+  $('ground-sense').textContent = s.sense;
+  $('ground-prompt').textContent = s.prompt;
+  $('ground-ack').textContent = '';
+  $('ground-hint').style.display = groundStageIdx===0 ? '' : 'none';
+  const dotsEl = $('ground-dots'); dotsEl.innerHTML = '';
+  for(let i=0;i<s.n;i++){
+    const b = document.createElement('button');
+    b.className = 'ground-dot'; b.setAttribute('aria-label','found one');
+    dotsEl.appendChild(b);
+  }
+}
+function groundTap(){
+  const s = GROUND_STAGES[groundStageIdx];
+  if(groundTapCount >= s.n) return;
+  $('ground-dots').children[groundTapCount].classList.add('filled');
+  $('ground-ack').textContent = s.acks[groundTapCount] || '';
+  groundTapCount++;
+  haptic();
+  if(groundTapCount >= s.n){
+    setTimeout(()=>{
+      groundStageIdx++;
+      groundTapCount = 0;
+      if(groundStageIdx >= GROUND_STAGES.length) groundFinish();
+      else groundRenderStage();
+    }, 700);
+  }
+}
+function groundFinish(){
+  addGrounding();
+  $('ground-stage').classList.add('done');
+  $('ground-count').textContent = '';
+  $('ground-sense').textContent = '';
+  $('ground-dots').innerHTML = '';
+  $('ground-prompt').textContent = 'five, four, three, two, one — you came back through all of them.';
+  $('ground-ack').textContent = "you're here.";
+  $('ground-skip').textContent = 'carry on →';
+  // no forced auto-close — this moment is worth reading, not racing a timer
+}
+function openGround(){
+  groundStageIdx = 0; groundTapCount = 0;
+  $('ground-stage').classList.remove('done');
+  $('ground-skip').textContent = 'not now →';
+  $('ground-overlay').classList.add('open');
+  groundRenderStage();
+  haptic();
+}
+function closeGround(){
+  $('ground-overlay').classList.remove('open');
+}
+$('ground-open-bridge').addEventListener('click', openGround);
+$('ground-exit').addEventListener('click', closeGround);
+$('ground-skip').addEventListener('click', closeGround);
+$('ground-dots').addEventListener('click', e=>{ if(e.target.classList.contains('ground-dot')) groundTap(); });
+
+/* ════════════════════════════════════════
+   craving windows — from kataleya-routine-bank.json, with a fallback
+   if the fetch fails. Subtle only: a hint line, not an alert.
+   ════════════════════════════════════════ */
+let cravingWindows = [ { startTime:'17:00', endTime:'17:30' }, { startTime:'21:00', endTime:'21:30' } ];
+fetch('/kataleya-routine-bank.json').then(r=>r.json()).then(d=>{
+  const cw = (d.events||[]).filter(e=>e.isCravingWindow).map(e=>({startTime:e.startTime, endTime:e.endTime}));
+  if(cw.length) cravingWindows = cw;
+}).catch(()=>{});
+function inCravingWindow(){
+  const now = new Date();
+  const mins = now.getHours()*60 + now.getMinutes();
+  return cravingWindows.some(w=>{
+    const [sh,sm] = w.startTime.split(':').map(Number);
+    const [eh,em] = w.endTime.split(':').map(Number);
+    return mins >= sh*60+sm && mins < eh*60+em;
+  });
+}
+
+/* ════════════════════════════════════════
+   router
+   ════════════════════════════════════════ */
+const screens = ['onboarding','room','bridge','cover','terminal','mirror','burn','scars','vault','settings','pairing'];
+const ORDER = ['bridge','room','cover','terminal','mirror','burn','scars','vault','settings']; // arrow-key strip
+const enterHooks = {};
+// dock icons are bare glyphs (◉ ≈ ☾ ▤ …) with only `title` tooltips, which
+// never fire on touch — this is the plain-language gloss for a screen's
+// first visit each session, so navigation is discoverable without a hover
+// terminal has no entry here on purpose — its own persistent subtitle
+// ("the garden's vitals...") already does this job, and the screen's
+// content is dense enough top-to-bottom that a toast has nowhere to sit
+// without covering something real
+const SCREEN_INTRO = {
+  room:     "the garden — the river that knew you were coming",
+  bridge:   "the bridge — check in with the weather inside",
+  cover:    "the cocoon — step away for a moment",
+  mirror:   "the mirror — look inward",
+  burn:     "the burn ritual — write it, release it",
+  scars:    "biometric scars — a quiet record of hard hours",
+  vault:    "the journal vault — leave a line for safekeeping",
+  settings: "settings — your data, your rules",
+};
+const introShown = new Set();
+function go(name){
+  if(state.screen === name) return;
+  const prev = state.screen;
+  state.screen = name;
+  screens.forEach(s=>{
+    const el = $('screen-'+s);
+    if(s === name){ el.classList.add('active'); requestAnimationFrame(()=>el.classList.add('visible')); }
+    else { el.classList.remove('visible'); setTimeout(()=>{ if(state.screen!==s) el.classList.remove('active'); }, 620); }
+  });
+  document.querySelectorAll('.dock-btn').forEach(b=>b.classList.toggle('on', b.dataset.nav===name));
+  $('dock').classList.toggle('hidden', name==='onboarding' || name==='cover');
+  if(enterHooks[name]) enterHooks[name](prev);
+  // a toast from the screen we're leaving shouldn't linger into the one
+  // we're entering — its own timer doesn't know navigation happened
+  clearTimeout(toast._t); $('toast').classList.remove('lit');
+  if(!introShown.has(name) && SCREEN_INTRO[name]){ introShown.add(name); toast(SCREEN_INTRO[name], 4200); }
+  haptic();
+}
+
+document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.nav)));
+
+/* keyboard nav */
+addEventListener('keydown',(e)=>{
+  if(state.screen==='onboarding') return;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
+  const idx = ORDER.indexOf(state.screen);
+  if(e.key==='ArrowRight' && idx>-1 && idx<ORDER.length-1) go(ORDER[idx+1]);
+  if(e.key==='ArrowLeft' && idx>0) go(ORDER[idx-1]);
+  if(e.key==='ArrowUp' && state.screen==='room') go('cover');
+  if(e.key==='ArrowDown' && state.screen==='cover') go('room');
+  if(e.key==='Escape' && state.screen!=='room') go('room');
+});
+
+/* touch swipes */
+let touchStart = null;
+addEventListener('touchstart',(e)=>{ touchStart = {x:e.touches[0].clientX, y:e.touches[0].clientY, t:Date.now()}; },{passive:true});
+addEventListener('touchend',(e)=>{
+  if(!touchStart || state.screen==='onboarding') return;
+  const dx = e.changedTouches[0].clientX - touchStart.x;
+  const dy = e.changedTouches[0].clientY - touchStart.y;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  touchStart = null;
+  if(Math.max(adx,ady) < 64) return;
+  if(adx > ady*1.4){
+    if(state.screen==='room' && dx<0) go('bridge');
+    else if(state.screen==='bridge' && dx>0) go('room');
+    else if(state.screen==='mirror' && dx>0) go('room');
+    else if(dx>0 && state.screen!=='room') go('room');
+  } else if(ady > adx*1.4){
+    if(state.screen==='room' && dy<0) go('cover');
+    if(state.screen==='cover' && dy>0) go('room');
+  }
+},{passive:true});
+
+/* ════════════════════════════════════════
+   room
+   ════════════════════════════════════════ */
+let whisperTimer = null;
+enterHooks.room = () => {
+  buildOrb($('room-orb')); liveOrbs.add($('room-orb'));
+  buildOuroboros($('ouro-canvas')); $('ouro-canvas')._scarCache = null; liveOuros.add($('ouro-canvas'));
+  cycleWhisper(true);
+  $('mercury-caduceus').classList.add('in');
+  checkButterfly();
+};
+// surfaces on sustained low mood — ported from the mobile app's spec
+// ("avg mood <= 4.5 over last 5 logs" on a 1-10 scale there; mood_value
+// here is 1-5, so the threshold is scaled, not copied verbatim).
+// Dismissing quiets it for the rest of this session — it isn't gone
+// forever, just not nagging on every single visit to the room.
+let butterflyDismissed = false;
+function checkButterfly(){
+  if(butterflyDismissed) return;
+  const recent = getMoodLogs().slice(0,5);
+  if(recent.length < 3) return;
+  const avg = recent.reduce((s,l)=>s+l.mood_value,0)/recent.length;
+  if(avg <= 2.5) $('butterfly-overlay').classList.add('open');
+}
+$('butterfly-dismiss').addEventListener('click', ()=>{
+  butterflyDismissed = true;
+  $('butterfly-overlay').classList.remove('open');
+});
+function cycleWhisper(first){
+  clearTimeout(whisperTimer);
+  const el = $('room-whisper');
+  const pool = ROOM_PHRASES[state.phaseOverride || state.phase];
+  const pick = pool[Math.floor(Math.random()*pool.length)];
+  const show = () => {
+    el.textContent = pick;
+    el.classList.add('lit');
+    whisperTimer = setTimeout(()=>{ el.classList.remove('lit'); whisperTimer = setTimeout(()=>cycleWhisper(false), 3000); }, 9000);
+  };
+  if(first){ el.classList.remove('lit'); setTimeout(show, 1600); } else show();
+}
+
+/* long-press the seed → terminal */
+(function(){
+  const stage = $('room-stage');
+  let t = null;
+  const start = () => { t = setTimeout(()=>{ t=null; go('terminal'); }, 900); };
+  const cancel = () => { if(t){ clearTimeout(t); t=null; } };
+  stage.addEventListener('pointerdown', start);
+  stage.addEventListener('pointerup', cancel);
+  stage.addEventListener('pointerleave', cancel);
+})();
+
+/* ════════════════════════════════════════
+   bridge — mood check-in
+   ════════════════════════════════════════ */
+const MOODS = [
+  ['radiant',5],['steady',4],['tender',3],['heavy',2],['storm',1.5],['void',1],
+];
+enterHooks.bridge = () => {
+  buildOrb($('bridge-orb')); liveOrbs.add($('bridge-orb'));
+  $('bridge-ack').classList.remove('lit');
+  const ch = $('craving-hint');
+  if(inCravingWindow()){ ch.textContent = "this hour tends to be heavier. that's not a coincidence — connection helps."; ch.style.display = 'block'; }
+  else ch.style.display = 'none';
+};
+$('bridge-orb-wrap').addEventListener('click', ()=> $('mood-overlay').classList.add('open'));
+$('mood-cancel').addEventListener('click', ()=> $('mood-overlay').classList.remove('open'));
+(function(){
+  const grid = $('mood-grid');
+  MOODS.forEach(([name,val])=>{
+    const b = document.createElement('button');
+    b.className = 'mood-btn'; b.textContent = name;
+    b.addEventListener('click', ()=>{
+      addMoodLog(val);
+      $('mood-overlay').classList.remove('open');
+      const ack = $('bridge-ack');
+      ack.textContent = val<=2 ? 'held. no judgement here.' : 'logged. the weather passes through.';
+      ack.classList.add('lit');
+      haptic();
+      $('ouro-canvas')._scarCache = null;
+      setTimeout(()=>ack.classList.remove('lit'), 5000);
+    });
+    grid.appendChild(b);
+  });
+})();
+
+/* ════════════════════════════════════════
+   cover — 2am cocoon
+   ════════════════════════════════════════ */
+let coverIdx = 0, holdRAF = null, holdT0 = 0;
+function buildCocoonRain(){
+  const rain = $('cocoon-rain'); rain.innerHTML = '';
+  const n = 9;
+  for(let i=0;i<n;i++){
+    const d = document.createElement('div');
+    d.className = 'raindrop';
+    d.style.left = (Math.random()*100).toFixed(1)+'%';
+    d.style.height = (40+Math.random()*50).toFixed(0)+'px';
+    d.style.animationDuration = (7+Math.random()*6).toFixed(1)+'s';
+    d.style.animationDelay = (-Math.random()*12).toFixed(1)+'s';
+    rain.appendChild(d);
+  }
+}
+enterHooks.cover = () => {
+  buildOrb($('cover-orb')); liveOrbs.add($('cover-orb'));
+  buildCocoonRain();
+  const ring = $('hold-ring'); ring.setAttribute('stroke', palette().accent); ring.setAttribute('stroke-dashoffset','628');
+  coverIdx = 0;
+  $('cover-phrase').textContent = deepHourPhrase() || COVER_PHRASES[coverIdx];
+};
+(function(){
+  const scr = $('screen-cover');
+  const ring = $('hold-ring');
+  const HOLD_MS = 2500;
+  let held = false;
+  scr.addEventListener('pointerdown', ()=>{
+    held = false; holdT0 = performance.now();
+    const step = (ts)=>{
+      const p = Math.min(1, (ts-holdT0)/HOLD_MS);
+      ring.setAttribute('stroke-dashoffset', String(628*(1-p)));
+      ring.setAttribute('stroke-opacity', String(0.15+p*0.6));
+      if(p>=1){ held = true; go('room'); ring.setAttribute('stroke-dashoffset','628'); return; }
+      holdRAF = requestAnimationFrame(step);
+    };
+    holdRAF = requestAnimationFrame(step);
+  });
+  const release = ()=>{
+    cancelAnimationFrame(holdRAF);
+    const wasQuick = performance.now()-holdT0 < 300;
+    ring.setAttribute('stroke-dashoffset','628');
+    if(!held && wasQuick){
+      coverIdx = (coverIdx+1)%COVER_PHRASES.length;
+      const ph = $('cover-phrase');
+      ph.style.opacity = '0';
+      setTimeout(()=>{ ph.textContent = COVER_PHRASES[coverIdx]; ph.style.opacity='1'; }, 450);
+    }
+  };
+  scr.addEventListener('pointerup', release);
+  scr.addEventListener('pointerleave', release);
+})();
+
+/* ════════════════════════════════════════
+   terminal
+   ════════════════════════════════════════ */
+function termLog(msg){
+  const el = document.createElement('div');
+  el.className = 'term-log-line';
+  el.textContent = '> ' + msg;
+  $('term-log').prepend(el);
+  while($('term-log').children.length > 8) $('term-log').lastChild.remove();
+}
+enterHooks.terminal = () => {
+  renderTerminal();
+  termLog('engine_room entered · '+new Date().toLocaleTimeString().toLowerCase());
+};
+function renderTerminal(){
+  const p = palette();
+  $('t-phase').textContent = p.displayName + ' ('+p.time+')';
+  $('t-existential').textContent = '· '+p.existential;
+  $('t-breath').textContent = state.breathTechnique+' · '+(breathCycleMs(state.breathTechnique)/1000)+'s cycle';
+  $('t-reentry').textContent = String(state.isReentry);
+  const bs = $('breath-select'); bs.innerHTML = '';
+  ['4-7-8','box','coherent'].forEach(t=>{
+    const b = document.createElement('button');
+    b.textContent = t; b.classList.toggle('on', t===state.breathTechnique);
+    b.addEventListener('click',()=>{ state.breathTechnique=t; store.set('breath_technique',t); renderTerminal(); termLog('breath_technique → '+t); });
+    bs.appendChild(b);
+  });
+}
+setInterval(()=>{
+  if(state.screen!=='terminal') return;
+  $('term-clock').textContent = new Date().toLocaleTimeString().toLowerCase();
+  const s = Math.floor((Date.now()-state.bootAt)/1000);
+  $('t-uptime').textContent = s<60 ? s+'s' : Math.floor(s/60)+'m '+(s%60)+'s';
+}, 1000);
+$('term-input').addEventListener('keydown',(e)=>{
+  if(e.key!=='Enter') return;
+  const cmd = e.target.value.trim().toLowerCase();
+  e.target.value = '';
+  if(!cmd) return;
+  termLog(cmd);
+  if(cmd==='/reset'){ store.wipe(); location.reload(); return; }
+  if(cmd==='/seed'){ seedDemoData(); termLog('30 days of demo telemetry seeded'); return; }
+  if(cmd.startsWith('/phase')){
+    const ph = cmd.split(/\s+/)[1];
+    if(PHASES[ph]){ state.phaseOverride = ph; applyPhaseVars(); renderTerminal(); termLog('phase override → '+ph); }
+    else if(ph==='auto'){ state.phaseOverride = null; applyPhaseVars(); renderTerminal(); termLog('phase → circadian auto'); }
+    else termLog('usage: /phase choice|desire|still-pine|nyx|auto');
+    return;
+  }
+  const nav = cmd.replace('/','');
+  if(screens.includes(nav) && nav!=='onboarding'){ go(nav); return; }
+  if(cmd==='amor fati'){ termLog('life rewritten by choice. sharpened through endless cycles.'); return; }
+  termLog('unknown command');
+});
+
+/* ════════════════════════════════════════
+   burn ritual
+   ════════════════════════════════════════ */
+function buildRiver(){
+  const svg = $('mercury-river'); const p = palette();
+  svg.innerHTML = `
+    <defs><linearGradient id="riv" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${p.shadow}" stop-opacity="0.0"/>
+      <stop offset="40%" stop-color="${p.shadow}" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="${p.ambient}" stop-opacity="0.9"/>
+    </linearGradient></defs>
+    <path class="riv-wave" d="" fill="url(#riv)"/>
+    <path class="riv-line" d="" fill="none" stroke="${p.accent}" stroke-opacity="0.35" stroke-width="1"/>`;
+}
+function animateRiver(ts){
+  const svg = $('mercury-river');
+  if(svg && svg.isConnected && state.screen==='burn' && !reduceMotion){
+    const t = ts/1000;
+    let d = 'M 0 40 ';
+    for(let x=0;x<=460;x+=20){
+      const y = 40 + Math.sin(x/60 + t*0.9)*6 + Math.sin(x/29 + t*1.7)*3;
+      d += `L ${x} ${y.toFixed(1)} `;
+    }
+    svg.querySelector('.riv-line')?.setAttribute('d', d);
+    svg.querySelector('.riv-wave')?.setAttribute('d', d + 'L 460 120 L 0 120 Z');
+  }
+  requestAnimationFrame(animateRiver);
+}
+requestAnimationFrame(animateRiver);
+enterHooks.burn = () => { buildRiver(); $('burn-text').classList.remove('sinking'); $('burn-text').value=''; $('burn-done').classList.remove('lit'); };
+$('burn-release').addEventListener('click', ()=>{
+  const ta = $('burn-text');
+  if(!ta.value.trim()){ toast('write it first. then release.'); return; }
+  ta.classList.add('sinking');
+  addUrge();
+  $('ouro-canvas') && ($('ouro-canvas')._scarCache = null);
+  haptic();
+  setTimeout(()=>{
+    $('burn-done').textContent = 'just intention. release.';
+    $('burn-done').classList.add('lit');
+    setTimeout(()=>{ ta.value=''; ta.classList.remove('sinking'); $('burn-done').classList.remove('lit'); }, 3600);
+  }, 1900);
+});
+
+/* ════════════════════════════════════════
+   scars + vault
+   ════════════════════════════════════════ */
+const MOOD_NAME = (v)=> v>=5?'radiant':v>=4?'steady':v>=3?'tender':v>=2?'heavy':v>1?'storm':'void';
+enterHooks.scars = () => {
+  const list = $('scars-list'); list.innerHTML='';
+  const events = [
+    ...getMoodLogs().filter(l=>l.mood_value<=2).map(l=>({at:l.logged_at, kind:'low_signal', body:`mood registered <em>${MOOD_NAME(l.mood_value)}</em> during ${l.phase||'?'} — the trace remains. moss grows over it.`})),
+    ...getUrges().map(u=>({at:u.at, kind:'release', body: (u.before && u.after)
+      ? `a <em>${WAVE_LABELS[u.before-1]}</em> rose during ${u.phase||'?'} — and passed to a <em>${WAVE_LABELS[u.after-1]}</em>. carried, not kept.`
+      : `a thought was <em>released into the river</em> during ${u.phase||'?'} — carried, not kept.`
+    })),
+    ...getGroundings().map(g=>({at:g.at, kind:'grounded', body:`five things were real again, during ${g.phase||'?'} — sight, sound, touch, smell, taste, each found in turn.`})),
+  ].sort((a,b)=>b.at-a.at).slice(0,20);
+  if(!events.length){ list.innerHTML = '<div class="archive-empty">no scars recorded.<br/>difficult moments will leave traces here —<br/>and the moss will grow over them.</div>'; return; }
+  events.forEach((ev,i)=>{
+    const el = document.createElement('div');
+    el.className='archive-entry'; el.style.animationDelay = (i*90)+'ms';
+    el.innerHTML = `<div class="entry-meta">[ ${ev.kind} ] · ${fmtDate(ev.at)}</div><div class="entry-body">${ev.body}</div>`;
+    list.appendChild(el);
+  });
+};
+enterHooks.vault = () => {
+  activePinGate = 'vault';
+  $('vault-lock-btn').style.display = getClinicianPinHash() ? 'inline' : 'none';
+  mirrorPinBuf = ''; renderMirrorPinDots();
+  $('vault-pin-gate').classList.toggle('open', clinicianLocked());
+  $('vault-pin-err').textContent = '';
+  mirrorPinShowLockMsg();
+  renderVault();
+};
+function renderVault(){
+  const list = $('vault-list'); list.innerHTML='';
+  const entries = [
+    ...getJournal().map(j=>({at:j.at, meta:'journal · '+(j.phase||''), body:esc(j.text)})),
+    ...getMoodLogs().slice(0,10).map(l=>({at:l.logged_at, meta:'mood · '+(l.phase||''), body:'checked in: <em>'+MOOD_NAME(l.mood_value)+'</em>'})),
+  ].sort((a,b)=>b.at-a.at).slice(0,20);
+  if(!entries.length){ list.innerHTML = '<div class="archive-empty">the vault is empty.<br/>lines you seal here stay on this device.<br/>always.</div>'; return; }
+  entries.forEach((en,i)=>{
+    const el = document.createElement('div');
+    el.className='archive-entry'; el.style.animationDelay=(i*80)+'ms';
+    el.innerHTML = `<div class="entry-meta">[ ${en.meta} ] · ${fmtDate(en.at)}</div><div class="entry-body">${en.body}</div>`;
+    list.appendChild(el);
+  });
+}
+$('vault-save').addEventListener('click', ()=>{
+  const inp = $('vault-input');
+  if(!inp.value.trim()) return;
+  addJournal(inp.value.trim()); inp.value='';
+  renderVault(); toast('sealed in the vault');
+});
+$('vault-input').addEventListener('keydown',(e)=>{ if(e.key==='Enter') $('vault-save').click(); });
+
+/* ════════════════════════════════════════
+   settings
+   ════════════════════════════════════════ */
+enterHooks.settings = () => {
+  const a = getAttunement() || {};
+  $('set-name').value = a.name || '';
+  $('set-date').value = a.sobriety_date ? a.sobriety_date.slice(0,10) : '';
+  $('set-breath').value = state.breathTechnique;
+  $('set-haptics').classList.toggle('on', state.haptics);
+  $('set-haptics').setAttribute('aria-checked', String(state.haptics));
+  updateClinicianPinStatus();
+  $('backup-code-out').value = exportBackupCode() || '(nothing to back up yet)';
+  buildOuroboros($('settings-ouro')); $('settings-ouro')._scarCache = null; liveOuros.add($('settings-ouro'));
+};
+
+/* ── sponsor/sponsee pairing — real X25519 handshake, XChaCha20-Poly1305
+   for signals. No server exists anywhere in this app and isn't being
+   added for this: pairing is manual by design. Each person's public key
+   is a short copyable code, exchanged via whatever channel they already
+   use (text, email), pasted into the other device. Once paired, "sending
+   a signal" means composing a short message, encrypting it locally with
+   the derived shared secret, and handing the resulting code off the same
+   manual way -- there's no live/instant delivery without a server.
+
+   Key material lives in the same localStorage tier as everything else in
+   this app (via `store`) -- there's no meaningfully stronger storage tier
+   available in a plain static page (IndexedDB isn't more protected from
+   same-origin JS/devtools access than localStorage for this threat
+   model), so this doesn't pretend otherwise. The crypto itself is real;
+   the storage-at-rest guarantee is "private from casual snooping," same
+   honesty this app already applies to the clinician-PIN lock. ── */
+function pcFormatCode(bytes){
+  const hex = KataleyaCrypto.bytesToHex(bytes);
+  return hex.match(/.{1,8}/g)?.join(' ') ?? hex;
+}
+function pcParseCode(code){
+  const hex = (code||'').replace(/[^0-9a-fA-F]/g,'').toLowerCase();
+  if(hex.length !== 64) return null; // 32 bytes
+  try { return KataleyaCrypto.hexToBytes(hex); } catch(e){ return null; }
+}
+function pcGetOrCreateKeypair(){
+  const stored = store.get('pairing_privkey', null);
+  if(stored){
+    const secretKey = KataleyaCrypto.hexToBytes(stored);
+    return { secretKey, publicKey: KataleyaCrypto.x25519.getPublicKey(secretKey) };
+  }
+  const kp = KataleyaCrypto.x25519.keygen();
+  store.set('pairing_privkey', KataleyaCrypto.bytesToHex(kp.secretKey));
+  return kp;
+}
+const pcGetMyCode = () => pcFormatCode(pcGetOrCreateKeypair().publicKey);
+function pcPairWithCode(partnerCode){
+  const partnerPublicKey = pcParseCode(partnerCode);
+  if(!partnerPublicKey) return false;
+  const { secretKey } = pcGetOrCreateKeypair();
+  const sharedSecret = KataleyaCrypto.x25519.getSharedSecret(secretKey, partnerPublicKey);
+  store.set('pairing_sharedsecret', KataleyaCrypto.bytesToHex(sharedSecret));
+  return true;
+}
+const pcIsPaired = () => store.get('pairing_sharedsecret', null) !== null;
+function pcUnpair(){ localStorage.removeItem('kataleya_pairing_sharedsecret'); }
+function pcEncryptSignal(message){
+  const secretHex = store.get('pairing_sharedsecret', null);
+  if(!secretHex) return null;
+  const key = KataleyaCrypto.hexToBytes(secretHex);
+  const nonce = crypto.getRandomValues(new Uint8Array(24));
+  const plaintext = new TextEncoder().encode(message);
+  const ciphertext = KataleyaCrypto.xchacha20poly1305(key, nonce).encrypt(plaintext);
+  const payload = new Uint8Array(nonce.length + ciphertext.length);
+  payload.set(nonce, 0); payload.set(ciphertext, nonce.length);
+  return pcFormatCode(payload);
+}
+function pcDecryptSignal(code){
+  const secretHex = store.get('pairing_sharedsecret', null);
+  if(!secretHex) return null;
+  const hex = (code||'').replace(/[^0-9a-fA-F]/g,'').toLowerCase();
+  if(hex.length < 48 || hex.length % 2 !== 0) return null; // at least 24-byte nonce
+  let payload;
+  try { payload = KataleyaCrypto.hexToBytes(hex); } catch(e){ return null; }
+  const key = KataleyaCrypto.hexToBytes(secretHex);
+  const nonce = payload.slice(0,24);
+  const ciphertext = payload.slice(24);
+  try {
+    const plaintext = KataleyaCrypto.xchacha20poly1305(key, nonce).decrypt(ciphertext);
+    return new TextDecoder().decode(plaintext);
+  } catch(e){
+    // wrong key or tampered/truncated payload -- Poly1305's tag check
+    // failing is the correct outcome here, not something to work around
+    return null;
+  }
+}
+
+/* ── relay — an optional, best-effort automatic delivery layer on top of
+   the manual copy/paste flow above. It NEVER changes what gets encrypted:
+   the exact same pcEncryptSignal() output that would be hand-copied is
+   what gets posted. The relay server only ever sees that ciphertext plus
+   a channel id derived one-way from the shared secret (see pcGetChannelId)
+   — it cannot read a light's contents and cannot derive the secret from
+   the channel id. If the relay is unreachable, everything above still
+   works with zero internet; this layer just fails silently and the
+   history list stays empty. ── */
+const RELAY_URL = 'https://kataleya-relay-worker.kwasikontor45-995.workers.dev';
+let pcRelayPollTimer = null;
+async function pcGetChannelId(){
+  const secretHex = store.get('pairing_sharedsecret', null);
+  if(!secretHex) return null;
+  const keyBytes = KataleyaCrypto.hexToBytes(secretHex);
+  const label = new TextEncoder().encode('kataleya-relay-v1:');
+  const input = new Uint8Array(label.length + keyBytes.length);
+  input.set(label, 0); input.set(keyBytes, label.length);
+  const digest = await crypto.subtle.digest('SHA-256', input);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function pcRelaySend(code){
+  try{
+    const channelId = await pcGetChannelId();
+    if(!channelId) return;
+    await fetch(`${RELAY_URL}/relay/${channelId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+  }catch(e){ /* offline or unreachable — the manual copy/paste flow already covers this */ }
+}
+function renderRelayHistory(decoded){
+  const el = $('pairing-relay-history');
+  if(!decoded.length){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  el.innerHTML = decoded.slice(0, 5).map(it => `<div>🕯️ a light — ${timeAgo(it.at)} ago</div>`).join('');
+}
+async function pcRelayCheck(){
+  if(!pcIsPaired()) return;
+  try{
+    const channelId = await pcGetChannelId();
+    if(!channelId) return;
+    const res = await fetch(`${RELAY_URL}/relay/${channelId}`);
+    if(!res.ok) return;
+    const { items } = await res.json();
+    const decoded = items
+      .map(it => ({ at: it.at, msg: pcDecryptSignal(it.code) }))
+      .filter(it => it.msg !== null)
+      .sort((a,b) => b.at - a.at);
+    const seen = new Set(JSON.parse(store.get('pairing_relay_seen', '[]') || '[]'));
+    const fresh = decoded.filter(it => !seen.has(it.at));
+    if(fresh.length){
+      toast(fresh.length === 1 ? 'a light arrived' : `${fresh.length} lights arrived`);
+      haptic();
+    }
+    store.set('pairing_relay_seen', JSON.stringify(decoded.slice(0, 20).map(it => it.at)));
+    renderRelayHistory(decoded);
+  }catch(e){ /* offline/unreachable — silent, this is a best-effort layer */ }
+}
+function pcRelayStartPolling(){
+  pcRelayStopPolling();
+  pcRelayCheck();
+  pcRelayPollTimer = setInterval(() => { if(state.screen === 'pairing') pcRelayCheck(); }, 20000);
+}
+function pcRelayStopPolling(){
+  if(pcRelayPollTimer){ clearInterval(pcRelayPollTimer); pcRelayPollTimer = null; }
+}
+
+enterHooks.pairing = () => {
+  const role = store.get('pairing_role', null);
+  const paired = pcIsPaired();
+  $('pairing-role-section').style.display = role ? 'none' : '';
+  $('pairing-connect-section').style.display = (role && !paired) ? '' : 'none';
+  $('pairing-paired-section').style.display = (role && paired) ? '' : 'none';
+  $('pairing-send-section').style.display = (role && paired) ? '' : 'none';
+  $('pairing-relay-section').style.display = (role && paired) ? '' : 'none';
+  $('pairing-receive-section').style.display = (role && paired) ? '' : 'none';
+  if(role && !paired){
+    $('pairing-connect-title').textContent = 'connect as ' + role;
+    $('pairing-my-code').value = pcGetMyCode();
+  }
+  if(role && paired){
+    $('pairing-partner-label').value = store.get('pairing_partner_label', '') || '';
+    const other = role === 'sponsee' ? 'your sponsor' : 'your sponsee';
+    $('pairing-send-name').textContent = store.get('pairing_partner_label','') || other;
+    pcRelayStartPolling();
+  } else {
+    pcRelayStopPolling();
+  }
+};
+
+$('pairing-role-sponsee').addEventListener('click', ()=>{ store.set('pairing_role','sponsee'); enterHooks.pairing(); });
+$('pairing-role-sponsor').addEventListener('click', ()=>{ store.set('pairing_role','sponsor'); enterHooks.pairing(); });
+$('pairing-copy-code').addEventListener('click', async ()=>{
+  await navigator.clipboard.writeText($('pairing-my-code').value);
+  toast('copied');
+});
+$('pairing-confirm').addEventListener('click', ()=>{
+  $('pairing-error').textContent = '';
+  const ok = pcPairWithCode($('pairing-their-code').value);
+  if(!ok){ $('pairing-error').textContent = "that doesn't look right. check for a typo and try again."; return; }
+  $('pairing-their-code').value = '';
+  toast('connected');
+  enterHooks.pairing();
+});
+$('pairing-partner-label').addEventListener('change', ()=>{
+  store.set('pairing_partner_label', $('pairing-partner-label').value);
+  enterHooks.pairing();
+});
+$('pairing-unpair').addEventListener('click', ()=>{
+  pcUnpair();
+  pcRelayStopPolling();
+  localStorage.removeItem('kataleya_pairing_relay_seen');
+  $('pairing-outgoing-wrap').style.display = 'none';
+  $('pairing-decrypted-wrap').style.display = 'none';
+  toast('disconnected');
+  enterHooks.pairing();
+});
+// "sending a light" carries no message content to write or read — it's a
+// single wordless ping, same register as a tap on the shoulder. The real
+// crypto still runs underneath (this is what actually makes it reach only
+// the paired person), it's just never surfaced as "encrypt/decrypt" —
+// that framing is what made this feel like a chat app instead of a gesture.
+$('pairing-send-light').addEventListener('click', async ()=>{
+  const code = pcEncryptSignal('light');
+  if(!code) return;
+  $('pairing-outgoing-code').value = code;
+  $('pairing-outgoing-wrap').style.display = '';
+  pcRelaySend(code); // best-effort automatic delivery — copy/paste above still works regardless
+  haptic();
+});
+$('pairing-copy-signal').addEventListener('click', async ()=>{
+  await navigator.clipboard.writeText($('pairing-outgoing-code').value);
+  toast('sent');
+});
+$('pairing-decrypt').addEventListener('click', ()=>{
+  $('pairing-decrypt-error').textContent = '';
+  const message = pcDecryptSignal($('pairing-incoming-code').value);
+  if(message === null){
+    $('pairing-decrypt-error').textContent = "nothing there — wrong code, or it's not really from them.";
+    $('pairing-decrypted-wrap').style.display = 'none';
+    return;
+  }
+  $('pairing-decrypted-text').textContent = 'a light arrived.';
+  $('pairing-decrypted-wrap').style.display = '';
+  $('pairing-incoming-code').value = '';
+  haptic();
+});
+
+/* ── backup code — everything on this device, copy-pastable elsewhere.
+   base64 of a JSON snapshot of every kataleya_* localStorage key, not
+   encryption — this isn't secret, just portable. utf-8 safe (journal
+   text is free-form and may contain emoji/non-Latin1 characters, which
+   plain btoa() chokes on without this encode/decode dance). */
+function exportBackupCode(){
+  const data = {};
+  let any = false;
+  Object.keys(localStorage).filter(k=>k.startsWith('kataleya_')).forEach(k=>{
+    data[k.slice('kataleya_'.length)] = localStorage.getItem(k);
+    any = true;
+  });
+  if(!any) return null;
+  return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+}
+function importBackupCode(code){
+  try{
+    const data = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    if(!data || typeof data !== 'object') return false;
+    Object.entries(data).forEach(([k,v])=>{ localStorage.setItem('kataleya_'+k, v); });
+    return true;
+  }catch(e){ return false; }
+}
+$('backup-copy-btn').addEventListener('click', async ()=>{
+  const code = $('backup-code-out').value;
+  if(!code || code.startsWith('(')){ toast('nothing to back up yet'); return; }
+  try{ await navigator.clipboard.writeText(code); toast('backup code copied'); }
+  catch(e){ $('backup-code-out').select(); toast('select-all done — copy manually'); }
+});
+$('backup-restore-btn').addEventListener('click', ()=>{
+  const code = $('backup-code-in').value.trim();
+  if(!code){ toast('paste a backup code first'); return; }
+  if(!confirm('this replaces everything currently on this device with what\'s in the code. this cannot be undone. continue?')) return;
+  if(importBackupCode(code)){ location.reload(); }
+  else toast('that code didn\'t look right — check it and try again');
+});
+function updateClinicianPinStatus(){
+  $('clinician-pin-status').textContent = getClinicianPinHash()
+    ? 'PIN set — mirror + vault are locked until entered'
+    : 'no PIN set — mirror + vault are open, as usual';
+}
+$('clinician-pin-save').addEventListener('click', async ()=>{
+  const v = $('set-clinician-pin').value.replace(/\D/g,'').slice(0,4);
+  if(v.length !== 4){ toast('PIN needs to be 4 digits'); return; }
+  store.set('clinician_pin_hash', await sha256Hex(v));
+  $('set-clinician-pin').value = '';
+  sessionStorage.removeItem('kataleya_clinician_unlocked');
+  updateClinicianPinStatus();
+  toast('clinician PIN set — mirror + vault now locked');
+});
+$('clinician-pin-clear').addEventListener('click', ()=>{
+  store.set('clinician_pin_hash', null);
+  sessionStorage.removeItem('kataleya_clinician_unlocked');
+  $('set-clinician-pin').value = '';
+  updateClinicianPinStatus();
+  toast('clinician PIN removed — mirror + vault are open again');
+});
+$('set-name').addEventListener('change', ()=>{ const a=getAttunement()||{}; a.name=$('set-name').value.trim(); setAttunement(a); toast('name attuned'); });
+$('set-date').addEventListener('change', ()=>{ const a=getAttunement()||{}; a.sobriety_date=$('set-date').value; setAttunement(a); toast('sobriety date set'); });
+$('set-breath').addEventListener('change', ()=>{ state.breathTechnique=$('set-breath').value; store.set('breath_technique', state.breathTechnique); });
+$('set-haptics').addEventListener('click', ()=>{ state.haptics=!state.haptics; store.set('haptics', state.haptics); enterHooks.settings(); });
+$('seed-btn').addEventListener('click', ()=>{
+  const a = getAttunement() || {};
+  const hasRealData = getJournal().length > 0 || getMoodLogs().length > 0 || !!a.sobriety_date;
+  if(hasRealData && !confirm('this replaces your real journal, mood history, and sobriety date with fake sample data, so you can preview the mirror and scars screens fully (including the spine). this cannot be undone — back up your real data first with the backup code below if you want it back. continue?')) return;
+  seedDemoData();
+  toast('30 days of sample history loaded — this is preview data, not yours');
+});
+/* removes exactly what seeding added — anything tagged demo:true, plus
+   the 3 fixed demo journal lines by exact text match (covers entries
+   seeded before this tagging existed). anything real you added before
+   or after seeding, including your own sobriety date, is untouched. */
+function clearDemoEntries(){
+  const before = { j: getJournal().length, m: getMoodLogs().length, u: getUrges().length };
+  const j = getJournal().filter(e => !e.demo && !DEMO_JOURNAL_TEXTS.includes(e.text));
+  const m = getMoodLogs().filter(e => !e.demo);
+  const u = getUrges().filter(e => !e.demo);
+  store.set('journal', j); store.set('mood_logs', m); store.set('urge_logs', u);
+  if($('ouro-canvas')) $('ouro-canvas')._scarCache = null;
+  return { j: before.j-j.length, m: before.m-m.length, u: before.u-u.length };
+}
+$('clear-demo-btn').addEventListener('click', ()=>{
+  if(!confirm("remove seeded preview entries? this deletes anything tagged as sample data (plus the fixed demo journal lines, even from an older seed) — everything else, including your own sobriety date and anything real you've added, is left alone. continue?")) return;
+  const r = clearDemoEntries();
+  const total = r.j + r.m + r.u;
+  if(total === 0){ toast('no seeded preview entries found — nothing to clear'); return; }
+  toast(`cleared ${total} sample entr${total===1?'y':'ies'} — your real data is untouched`);
+  if(state.screen==='mirror') enterHooks.mirror();
+  if(state.screen==='scars') enterHooks.scars();
+  if(state.screen==='vault') renderVault();
+});
+$('purge-btn').addEventListener('click', ()=>{
+  if(confirm('purge local memory? this wipes everything and returns to the awakening ritual.')){ store.wipe(); sessionStorage.removeItem('kataleya_clinician_unlocked'); location.reload(); }
+});
+
+const DEMO_JOURNAL_TEXTS = ['the 2am wave came and went. i outlasted it.','ordinary tuesday. that used to be impossible.','called my sponsor before the thought finished forming.'];
+function seedDemoData(){
+  const logs=[], urges=[], journal=[];
+  const NOW = Date.now();
+  for(let d=29; d>=0; d--){
+    const n = 1 + Math.floor(Math.random()*2);
+    for(let k=0;k<n;k++){
+      const at = NOW - d*86400000 - Math.floor(Math.random()*20)*3600000;
+      const drift = (29-d)/29;                       // slowly improving arc
+      let v = 2.2 + drift*2.2 + (Math.random()-0.5)*1.6;
+      v = Math.max(1, Math.min(5, Math.round(v*2)/2));
+      logs.push({mood_value:v, logged_at:at, phase:getPhaseKey(new Date(at).getHours()), demo:true});
+      if(v<=1.5 && Math.random()<0.6) urges.push({at:at+1200000, phase:getPhaseKey(new Date(at).getHours()), demo:true});
+    }
+  }
+  logs.sort((a,b)=>b.logged_at-a.logged_at);
+  DEMO_JOURNAL_TEXTS.forEach((t,i)=>journal.push({text:t, at:NOW-(i+2)*86400000, phase:'nyx', demo:true}));
+  // tagged with demo:true so "clear seeded preview" (settings) can remove
+  // exactly these later without touching anything real added before or
+  // after seeding — store.set REPLACES these arrays wholesale, same as
+  // before, so anything real that existed at seed time is still gone;
+  // this only helps for what you add going forward.
+  store.set('mood_logs', logs); store.set('urge_logs', urges); store.set('journal', journal);
+  const a = getAttunement()||{};
+  // always set the demo sobriety date, even over a real one — anyone who's
+  // completed onboarding already has a real (usually very recent) date, so
+  // an "only if missing" guard meant the mirror's spine/day-count NEVER
+  // reflected the seeded 127 days for a realistically-onboarded user, no
+  // matter how many times they seeded. the confirm() dialog before this
+  // call already warns real data is being replaced — this makes that true
+  // for sobriety_date too, instead of silently only being partially true.
+  a.sobriety_date = new Date(NOW-127*86400000).toISOString();
+  if(!a.name) a.name='traveler';
+  setAttunement(a);
+  if($('ouro-canvas')) $('ouro-canvas')._scarCache = null;
+}
+
+/* ════════════════════════════════════════
+   MIRROR v2 — living diagnostic
+   spine lights 1 vertebra / 30 days sober. heart pulses at
+   a rate mapped to mood trend. ribs breathe. scan reveals labels.
+   real mood telemetry sparkline. typewriter log.
+   ════════════════════════════════════════ */
+function buildVessel(){
+  const p = palette();
+  const G = p.accent;
+  const svg = $('vessel-svg');
+  const VERTS = 12; // 12 vertebrae → 360 days representable
+  let verts = '';
+  for(let i=0;i<VERTS;i++){
+    const y = 118 + i*11;
+    verts += `<rect class="vert" data-i="${i}" x="136" y="${y}" width="8" height="6" fill="${G}" fill-opacity="0.10" stroke="${G}" stroke-opacity="0.25" stroke-width="0.6"/>`;
+  }
+  let ribs = '';
+  for(let i=0;i<4;i++){
+    const y = 130 + i*20, rx = 34 - i*3;
+    ribs += `
+      <path class="rib" d="M 140 ${y} q -${rx} 4 -${rx+4} 18" fill="none" stroke="${G}" stroke-opacity="0.3" stroke-width="0.8"/>
+      <path class="rib" d="M 140 ${y} q ${rx} 4 ${rx+4} 18" fill="none" stroke="${G}" stroke-opacity="0.3" stroke-width="0.8"/>`;
+  }
+  svg.innerHTML = `
+    <defs>
+      <radialGradient id="heart-g" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="${p.rim}" stop-opacity="0.95"/>
+        <stop offset="55%" stop-color="${G}" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="${G}" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="v-glow" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="1.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <!-- head -->
+    <rect x="120" y="30" width="40" height="50" rx="2" fill="none" stroke="${G}" stroke-width="1" stroke-dasharray="2 2"/>
+    <line x1="128" y1="52" x2="136" y2="52" stroke="${G}" stroke-opacity="0.5" stroke-width="0.8"/>
+    <line x1="144" y1="52" x2="152" y2="52" stroke="${G}" stroke-opacity="0.5" stroke-width="0.8"/>
+    <text class="organ-label" data-organ="mind" x="170" y="50">[ mind ]</text>
+    <!-- neck + shoulders -->
+    <line x1="140" y1="80" x2="140" y2="105" stroke="${G}" stroke-width="1"/>
+    <line x1="80" y1="105" x2="200" y2="105" stroke="${G}" stroke-width="1"/>
+    <!-- torso -->
+    <rect x="100" y="105" width="80" height="140" fill="none" stroke="${G}" stroke-width="1"/>
+    ${ribs}
+    <g class="spine">${verts}</g>
+    <text class="organ-label" data-organ="spine" x="186" y="185">[ spine · 30d ]</text>
+    <!-- heart -->
+    <circle class="heart" cx="128" cy="150" r="7" fill="url(#heart-g)" filter="url(#v-glow)"/>
+    <text class="organ-label" data-organ="heart" x="30" y="150">[ heart · trend ]</text>
+    <!-- arms -->
+    <polyline points="80,105 60,200 65,290" fill="none" stroke="${G}" stroke-width="1" stroke-dasharray="4 4"/>
+    <polyline points="200,105 220,200 215,290" fill="none" stroke="${G}" stroke-width="1" stroke-dasharray="4 4"/>
+    <!-- pelvis + legs -->
+    <polygon points="100,245 180,245 160,275 120,275" fill="none" stroke="${G}" stroke-width="1"/>
+    <polyline points="120,275 110,400 115,500" fill="none" stroke="${G}" stroke-width="1"/>
+    <polyline points="160,275 170,400 165,500" fill="none" stroke="${G}" stroke-width="1"/>
+    <!-- joints -->
+    ${[[138,53],[138,103],[138,243],[78,103],[198,103],[118,273],[158,273]].map(([x,y])=>`<rect x="${x}" y="${y}" width="4" height="4" fill="${G}"/>`).join('')}
+    <text class="organ-label" data-organ="ground" x="180" y="495">[ ground ]</text>`;
+}
+
+let mirrorTimers = [];
+function clearMirrorTimers(){ mirrorTimers.forEach(t=>clearTimeout(t)); mirrorTimers=[]; }
+
+/* ── mirror PIN keypad ──
+   lockout state is persisted (not just an in-memory counter) —
+   otherwise a reload trivially resets the attempt count, which
+   defeats the whole point of a lockout against casual snooping. */
+let activePinGate = 'mirror'; // which screen's gate is currently being typed into
+let mirrorPinBuf = '';
+const MIRROR_PIN_MAX_ATTEMPTS = 3;
+const MIRROR_PIN_LOCKOUT_MS = 30000;
+const getPinLockout = () => store.get('mirror_pin_lockout', { attempts:0, lockedUntil:0 });
+const setPinLockout = (v) => store.set('mirror_pin_lockout', v);
+function renderMirrorPinDots(){
+  for(let i=0;i<4;i++){ const d=$(activePinGate+'-pin-dot-'+i); if(d) d.classList.toggle('filled', mirrorPinBuf.length>i); }
+}
+function mirrorPinLockRemainingMs(){
+  return Math.max(0, getPinLockout().lockedUntil - Date.now());
+}
+function mirrorPinShowLockMsg(){
+  const remain = mirrorPinLockRemainingMs();
+  if(remain > 0) $(activePinGate+'-pin-err').textContent = `too many attempts — wait ${Math.ceil(remain/1000)}s`;
+}
+async function mirrorPinTry(k){
+  if(mirrorPinLockRemainingMs() > 0){ mirrorPinShowLockMsg(); return; }
+  if(k==='back'){ mirrorPinBuf = mirrorPinBuf.slice(0,-1); renderMirrorPinDots(); return; }
+  if(k==='clr'){ mirrorPinBuf=''; renderMirrorPinDots(); return; }
+  if(mirrorPinBuf.length>=4) return;
+  mirrorPinBuf += k;
+  renderMirrorPinDots();
+  if(mirrorPinBuf.length<4) return;
+  const hash = await sha256Hex(mirrorPinBuf);
+  mirrorPinBuf='';
+  if(hash === getClinicianPinHash()){
+    sessionStorage.setItem('kataleya_clinician_unlocked','1');
+    $(activePinGate+'-pin-gate').classList.remove('open');
+    $(activePinGate+'-pin-err').textContent='';
+    setPinLockout({ attempts:0, lockedUntil:0 });
+    renderMirrorPinDots();
+    haptic();
+  } else {
+    const lockout = getPinLockout();
+    lockout.attempts++;
+    if(lockout.attempts >= MIRROR_PIN_MAX_ATTEMPTS){
+      lockout.lockedUntil = Date.now() + MIRROR_PIN_LOCKOUT_MS;
+      lockout.attempts = 0;
+      setPinLockout(lockout);
+      mirrorPinShowLockMsg();
+    } else {
+      setPinLockout(lockout);
+      $(activePinGate+'-pin-err').textContent = `incorrect — ${MIRROR_PIN_MAX_ATTEMPTS-lockout.attempts} left`;
+    }
+    renderMirrorPinDots();
+  }
+}
+$('mirror-pin-keypad').addEventListener('click', e=>{
+  const k = e.target.dataset.k; if(k) mirrorPinTry(k);
+});
+$('mirror-lock-btn').addEventListener('click', ()=>{
+  sessionStorage.removeItem('kataleya_clinician_unlocked');
+  activePinGate = 'mirror';
+  $('mirror-pin-gate').classList.add('open');
+  mirrorPinBuf=''; renderMirrorPinDots();
+  haptic();
+});
+$('vault-pin-keypad').addEventListener('click', e=>{
+  const k = e.target.dataset.k; if(k) mirrorPinTry(k);
+});
+$('vault-lock-btn').addEventListener('click', ()=>{
+  sessionStorage.removeItem('kataleya_clinician_unlocked');
+  activePinGate = 'vault';
+  $('vault-pin-gate').classList.add('open');
+  mirrorPinBuf=''; renderMirrorPinDots();
+  haptic();
+});
+function typeInto(el, text, speed=26){
+  el.textContent='';
+  [...text].forEach((ch,i)=>{ mirrorTimers.push(setTimeout(()=>{ el.textContent += ch; }, i*speed)); });
+}
+function mirrorLogLine(text, delay, bright=false, blink=false){
+  mirrorTimers.push(setTimeout(()=>{
+    const row = document.createElement('div');
+    row.className = 'mirror-log-line'+(bright?' bright':'')+(blink?' cursor-blink':'');
+    row.innerHTML = '<span class="p">&gt;</span>';
+    const span = document.createElement('span'); row.appendChild(span);
+    $('mirror-log').appendChild(row);
+    typeInto(span, text, 18);
+  }, delay));
+}
+
+const TREND_BPM = { critical: 96, unsettled: 78, stable: 62, ascendant: 54, '—': 62 };
+let heartBeat = { bpm: 62 };
+
+enterHooks.mirror = () => {
+  clearMirrorTimers();
+  activePinGate = 'mirror';
+  // push phase color into mirror CSS vars
+  const _mp = palette();
+  const _mrgb = hexToRgb(_mp.accent);
+  document.getElementById('screen-mirror').style.setProperty('--mirror-ph-rgb', _mrgb);
+
+  $('mirror-lock-btn').style.display = getClinicianPinHash() ? 'inline' : 'none';
+  mirrorPinBuf = ''; renderMirrorPinDots();
+  $('mirror-pin-gate').classList.toggle('open', clinicianLocked());
+  $('mirror-pin-err').textContent = '';
+  mirrorPinShowLockMsg();
+
+  buildVessel();
+  $('mirror-log').innerHTML='';
+
+  const a = getAttunement() || {};
+  const days = a.sobriety_date ? daysSince(a.sobriety_date) : 0;
+  const logs = getMoodLogs().filter(l=>Date.now()-l.logged_at < 30*86400000);
+  const trend = moodTrend(logs);
+  const latest = getMoodLogs()[0];
+  const p = palette();
+
+  /* values — decrypt-typed in */
+  typeInto($('m-days'), String(days), 60);
+  $('m-days-stage').textContent = growthStage(days);
+  typeInto($('m-phase'), p.displayName, 45);
+  mirrorTimers.push(setTimeout(()=>typeInto($('m-trend'), trend, 45), 300));
+  mirrorTimers.push(setTimeout(()=>typeInto($('m-last'), latest ? timeAgo(latest.logged_at) : '—', 45), 500));
+  $('mirror-name').textContent = a.name ? '// '+a.name : '// awaiting attunement';
+
+  /* bars */
+  mirrorTimers.push(setTimeout(()=>{
+    $('m-days-bar').style.width = Math.min(100, days/3.65)+'%'; // 365d = full
+    $('m-last-bar').style.width = latest ? Math.max(8, 100 - Math.min(92,(Date.now()-latest.logged_at)/864000))+'%' : '0%';
+  }, 200));
+
+  const pb = $('m-phase-bars'); pb.innerHTML='';
+  ['choice','desire','still-pine','nyx'].forEach(k=>{
+    const d = document.createElement('div'); d.className='phase-cell-bar';
+    d.style.opacity = (k === (state.phaseOverride||state.phase)) ? '1' : '0.15';
+    pb.appendChild(d);
+  });
+  const tb = $('m-trend-bars'); tb.innerHTML='';
+  ['critical','unsettled','stable','ascendant'].forEach(k=>{
+    const d = document.createElement('div'); d.className='mini-cell-bar';
+    d.style.opacity = (k===trend) ? '1' : '0.15';
+    tb.appendChild(d);
+  });
+
+  /* spine — one vertebra per 30 days */
+  const lit = Math.min(12, Math.floor(days/30));
+  document.querySelectorAll('#vessel-svg .vert').forEach((v,i)=>{
+    if(i >= 12-lit){ // fill from the base upward
+      mirrorTimers.push(setTimeout(()=>{
+        v.setAttribute('fill-opacity','0.85');
+        v.setAttribute('stroke-opacity','0.9');
+      }, 600 + (12-i)*140));
+    }
+  });
+
+  /* heart rate ← trend */
+  heartBeat.bpm = TREND_BPM[trend] || 62;
+
+  /* telemetry sparkline from real logs */
+  drawEkg(logs);
+
+  /* system log */
+  mirrorLogLine('vessel_aligned', 400);
+  mirrorLogLine('phase_sync: '+(state.phaseOverride||state.phase), 900);
+  mirrorLogLine('spine_segments_lit: '+lit+'/12', 1400);
+  mirrorLogLine('cardiac_map: '+trend+' → '+heartBeat.bpm+'bpm', 1900);
+  const insight = phaseMoodInsight(logs);
+  if(insight) mirrorLogLine('insight: '+insight, 2300);
+  mirrorLogLine('scan_complete · standing_by', insight ? 3100 : 2500, true, true);
+};
+
+function drawEkg(logs){
+  const svg = $('ekg-svg');
+  const pts = [...logs].sort((a,b)=>a.logged_at-b.logged_at);
+  $('ekg-n').textContent = pts.length+' samples';
+  if(pts.length < 2){
+    const ep = palette();
+    svg.innerHTML = `<line x1="0" y1="32" x2="400" y2="32" stroke="${ep.accent}" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3 5"/>
+      <text x="200" y="36" text-anchor="middle" font-size="9" fill="${ep.accent}" fill-opacity="0.35" letter-spacing="2">no telemetry — check in at the bridge</text>`;
+    return;
+  }
+  const t0 = pts[0].logged_at, t1 = pts[pts.length-1].logged_at;
+  const path = pts.map((l,i)=>{
+    const x = 6 + ((l.logged_at-t0)/(t1-t0 || 1))*388;
+    const y = 58 - ((l.mood_value-1)/4)*50;
+    return (i?'L':'M')+' '+x.toFixed(1)+' '+y.toFixed(1);
+  }).join(' ');
+  const _ep = palette();
+  svg.innerHTML = `
+    <line x1="0" y1="12" x2="400" y2="12" stroke="${_ep.accent}" stroke-opacity="0.08" stroke-width="0.6"/>
+    <line x1="0" y1="32" x2="400" y2="32" stroke="${_ep.accent}" stroke-opacity="0.08" stroke-width="0.6"/>
+    <line x1="0" y1="52" x2="400" y2="52" stroke="${_ep.accent}" stroke-opacity="0.08" stroke-width="0.6"/>
+    <path d="${path}" fill="none" stroke="${_ep.accent}" stroke-opacity="0.75" stroke-width="1.3" stroke-linejoin="round"
+      style="filter:drop-shadow(0 0 3px ${_ep.accent}66);${reduceMotion?'':'stroke-dasharray:1200;stroke-dashoffset:1200;animation:ekg-draw 2.4s ease forwards;'}"/>
+    <style>@keyframes ekg-draw { to { stroke-dashoffset: 0; } }</style>`;
+}
+
+/* mirror scanline sweep + label reveal + heartbeat — one rAF */
+(function(){
+  let sweepT0 = performance.now();
+  function loop(ts){
+    if(state.screen === 'mirror'){
+      const H = innerHeight;
+      const period = 8000;
+      const y = ((ts - sweepT0) % period)/period * (H+200) - 100;
+      const sl = $('mirror-scanline');
+      if(!reduceMotion) sl.style.top = y+'px';
+
+      // reveal organ labels while scan passes their on-screen y
+      document.querySelectorAll('#vessel-svg .organ-label').forEach(lbl=>{
+        const r = lbl.getBoundingClientRect();
+        const within = !reduceMotion ? Math.abs(r.top - y) < 120 : true;
+        lbl.classList.toggle('revealed', within);
+      });
+
+      // heartbeat
+      const heart = document.querySelector('#vessel-svg .heart');
+      if(heart){
+        const beat = Math.pow(Math.max(0, Math.sin(ts/1000 * Math.PI * heartBeat.bpm/60)), 6);
+        heart.setAttribute('r', (6 + beat*3.5).toFixed(2));
+        heart.setAttribute('opacity', (0.55 + beat*0.45).toFixed(2));
+      }
+      // rib breath
+      const rb = breathValue(ts);
+      document.querySelectorAll('#vessel-svg .rib').forEach(r=>r.setAttribute('stroke-opacity',(0.18+rb*0.22).toFixed(2)));
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+
+/* ════════════════════════════════════════
+   onboarding — awakening ritual (3 beats)
+   ════════════════════════════════════════ */
+function runOnboarding(){
+  const stage = $('ob-stage');
+  const beats = [
+    { text: "however you arrive, i'm attuned to it.\nheld here — no performing required.", btn: "i'm here" },
+    { text: 'what should the garden\ncall you?', input: 'name', btn: 'continue' },
+    { text: 'when did the rewriting begin?\n(your sobriety date — or today.)', input: 'date', btn: 'seal' },
+    { text: 'amor fati.\nthe garden holds all of it.', btn: 'enter' },
+  ];
+  let step = 0; const data = {};
+  function render(){
+    const b = beats[step];
+    stage.innerHTML = `
+      <svg class="ob-orb" id="ob-orb" viewBox="0 0 200 200"></svg>
+      <div class="ob-text">${b.text}</div>
+      ${b.input==='name' ? '<input id="ob-input" maxlength="40" placeholder="a name, any name" autocomplete="off"/>' : ''}
+      ${b.input==='date' ? '<input id="ob-input" type="date"/>' : ''}
+      <button class="ob-next" id="ob-next">${b.btn}</button>`;
+    buildOrb($('ob-orb')); liveOrbs.add($('ob-orb'));
+    if(b.input==='date') $('ob-input').value = new Date().toISOString().slice(0,10);
+    $('ob-next').addEventListener('click', advance);
+    $('ob-input')?.addEventListener('keydown', e=>{ if(e.key==='Enter') advance(); });
+    $('ob-input')?.focus();
+  }
+  function advance(){
+    const b = beats[step];
+    if(b.input==='name'){ const v=$('ob-input').value.trim(); if(!v){ toast('the garden needs a name to hold'); return; } data.name=v; }
+    if(b.input==='date'){ const v=$('ob-input').value; data.sobriety_date = v ? new Date(v+'T00:00:00').toISOString() : new Date().toISOString(); }
+    step++;
+    if(step >= beats.length){
+      setAttunement({ name: data.name, sobriety_date: data.sobriety_date });
+      go('room');
+      return;
+    }
+    if(step === beats.length - 1){
+      setAttunement({ name: data.name, sobriety_date: data.sobriety_date });
+    }
+    render();
+  }
+  render();
+}
+
+/* ════════════════════════════════════════
+   boot
+   ════════════════════════════════════════ */
+applyPhaseVars();
+setInterval(()=>{
+  const ph = getPhaseKey(new Date().getHours());
+  if(ph !== state.phase){ state.phase = ph; if(!state.phaseOverride){ applyPhaseVars(); if(state.screen==='room') enterHooks.room(); } }
+}, 60000);
+
+if(getAttunement()){ go('room'); } else { go('onboarding'); runOnboarding(); }
+
+// service worker: caches the app shell so it still opens (and works --
+// everything is on-device already, no backend to lose) with no connection.
+// Failing silently on unsupported browsers is correct here -- this is a
+// progressive enhancement, not a requirement to run the app at all.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/kataleya-demo/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>

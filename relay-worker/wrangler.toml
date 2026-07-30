@@ -1,0 +1,7 @@
+name = "kataleya-relay-worker"
+main = "src/index.js"
+compatibility_date = "2026-07-28"
+
+[[kv_namespaces]]
+binding = "KATALEYA_RELAY"
+id = "0d346697d69b4995bc2ac590ca2c5305"
