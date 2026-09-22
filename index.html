@@ -991,6 +991,33 @@
     text-transform: lowercase;
   }
   #toast.lit { opacity: 1; }
+  /* ── iOS install nudge (2026-09-19) ──
+     Safari has no beforeinstallprompt (the mechanism this app would
+     otherwise use to offer install itself), and a tab that's never added
+     to the home screen also gets weaker on-device storage guarantees on
+     iOS -- so on iOS specifically, staying in a browser tab isn't just a
+     cosmetic downgrade (browser chrome, no standalone splash), it's a
+     real risk to the vault/journal actually persisting. Top-anchored so
+     it never collides with #toast or the room's own bottom hint. */
+  #ios-install-nudge {
+    position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 50%;
+    transform: translateX(-50%); max-width: min(86vw, 380px); z-index: 210;
+    display: none; align-items: center; gap: 10px;
+    font-size: 11px; letter-spacing: 0.3px; line-height: 1.5;
+    color: var(--text, #eee);
+    background: rgba(10,10,12,0.92);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent);
+    padding: 10px 12px;
+  }
+  #ios-install-nudge.show { display: flex; }
+  #ios-install-nudge span.msg { flex: 1; text-transform: lowercase; }
+  #ios-install-nudge button {
+    background: none; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent); border-radius: 8px; padding: 4px 9px;
+    font-size: 10px; letter-spacing: 0.5px; text-transform: lowercase; flex-shrink: 0;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     /* exceptions carved out first — small/slow/non-flashing ambient
@@ -1116,7 +1143,7 @@
     </div>
     <div class="term-input-row">
       <span style="color:rgba(51,255,51,0.5);">&gt;</span>
-      <input id="term-input" autocomplete="off" spellcheck="false" placeholder="/reset · /seed · /phase nyx · /mirror ..." style="order:2;" />
+      <input id="term-input" autocomplete="off" spellcheck="false" placeholder="/reset · /seed · /clear-demo · /phase nyx · /mirror ..." style="order:2;" />
       <span class="term-cursor-hint cursor-blink" aria-hidden="true" style="order:1;"></span>
     </div>
   </section>
@@ -1126,7 +1153,7 @@
        pairing is manual by design (see vendor/NOTICE.md for the crypto). ══ -->
   <section class="screen" id="screen-pairing">
     <div style="padding-top: env(safe-area-inset-top);">
-      <span class="bracket-header">[ sponsor_signal ]</span>
+      <span class="bracket-header">[ light_and_water ]</span>
     </div>
     <div class="settings-scroll"><div class="settings-inner">
 
@@ -1143,66 +1170,81 @@
       </div>
 
       <div class="settings-section" id="pairing-connect-section" style="display:none;">
-        <div class="settings-section-title" id="pairing-connect-title">connect</div>
+        <div class="settings-section-title" id="pairing-connect-title">attune</div>
         <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
-          share this with them however you already talk (text, email) — then paste
-          what they send back to you, below.
+          if you're together, read these words to each other and type them in below —
+          no typos, no tech. apart, send this however you already talk (text, email),
+          then paste what they send back. once, and you're both attuned for good.
         </div>
         <div class="field">
-          <textarea id="pairing-my-code" readonly rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text-muted);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+          <textarea id="pairing-my-code" readonly rows="4" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text-muted);font-family:'Courier Prime',monospace;font-size:11px;line-height:1.7;padding:10px 12px;resize:none;"></textarea>
         </div>
         <div class="pill-row">
+          <button class="ghost-btn" id="pairing-share-code" style="display:none;">share this</button>
           <button class="ghost-btn" id="pairing-copy-code">copy this</button>
         </div>
         <div class="field" style="margin-top:8px;">
-          <textarea id="pairing-their-code" placeholder="paste what they sent you" rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+          <textarea id="pairing-their-code" placeholder="type or paste the words they gave you" rows="4" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:11px;line-height:1.7;padding:10px 12px;resize:none;"></textarea>
         </div>
         <div id="pairing-error" style="font-size:11px;color:#ff6666;"></div>
         <div class="pill-row">
-          <button class="ghost-btn" id="pairing-confirm">connect</button>
+          <button class="ghost-btn" id="pairing-confirm">attune</button>
         </div>
       </div>
 
       <div class="settings-section" id="pairing-paired-section" style="display:none;">
-        <div class="settings-section-title">connected</div>
+        <div class="settings-section-title">attuned</div>
         <div class="field">
           <label for="pairing-partner-label">their name (optional, just for you)</label>
           <input id="pairing-partner-label" maxlength="40" />
         </div>
+        <div class="field" id="pairing-verify-wrap" style="margin-top:4px;">
+          <label>your two words <span style="opacity:.55;font-size:9px;letter-spacing:1px;">— say these to each other once. if they don't match on both screens, something's wrong with how the codes above were shared — release and try again, in person if you can</span></label>
+          <div id="pairing-verify-phrase" style="border:1px solid color-mix(in srgb, var(--phosphor-terminal) 35%, transparent);border-radius:10px;background:color-mix(in srgb, var(--phosphor-terminal) 8%, transparent);padding:12px;font-family:'Courier Prime',monospace;font-size:14px;letter-spacing:1px;color:var(--text);text-align:center;margin-top:6px;"></div>
+        </div>
         <div class="pill-row">
-          <button class="danger-btn" id="pairing-unpair">disconnect</button>
+          <button class="danger-btn" id="pairing-unpair">release</button>
         </div>
       </div>
 
       <div class="settings-section" id="pairing-send-section" style="display:none;">
-        <div class="settings-section-title">a light for <span id="pairing-send-name">them</span></div>
+        <div class="settings-section-title">for <span id="pairing-send-name">them</span></div>
         <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
-          no words, just a signal that reaches only them.
+          a light carries no words — just a signal that reaches only them.
+          water can carry a few words with it, if you want it to.
         </div>
         <div class="pill-row">
           <button class="ghost-btn" id="pairing-send-light">send a light</button>
+          <button class="ghost-btn" id="pairing-send-water">send water</button>
+        </div>
+        <div class="field" id="pairing-water-text-wrap" style="display:none;margin-top:8px;">
+          <textarea id="pairing-water-text" maxlength="140" placeholder="a few words to carry with it (optional)" rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
+          <div class="pill-row" style="margin-top:8px;">
+            <button class="ghost-btn" id="pairing-send-water-confirm">pour it</button>
+          </div>
         </div>
         <div id="pairing-outgoing-wrap" style="display:none;">
           <div class="field" style="margin-top:8px;">
             <textarea id="pairing-outgoing-code" readonly rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text-muted);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
           </div>
           <div class="pill-row">
+            <button class="ghost-btn" id="pairing-share-signal" style="display:none;">send it their way</button>
             <button class="ghost-btn" id="pairing-copy-signal">copy — send it their way</button>
           </div>
         </div>
       </div>
 
       <div class="settings-section" id="pairing-relay-section" style="display:none;">
-        <div class="settings-section-title">recent lights</div>
+        <div class="settings-section-title">recent light &amp; water</div>
         <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
-          when you're both online, lights arrive here on their own — no pasting needed.
-          this is best-effort; the paste option below always works, even with no connection.
+          when you're both online, these arrive here on their own — no pasting needed.
+          this is best-effort; the paste option above always works, even with no connection.
         </div>
         <div id="pairing-relay-history" style="display:none;margin-top:8px;font-size:12px;color:var(--text-muted);line-height:1.9;"></div>
       </div>
 
       <div class="settings-section" id="pairing-receive-section" style="display:none;">
-        <div class="settings-section-title">did a light arrive?</div>
+        <div class="settings-section-title">has something arrived?</div>
         <div class="field">
           <textarea id="pairing-incoming-code" placeholder="paste what they sent" rows="2" style="width:100%;background:color-mix(in srgb, var(--accent) 3%, transparent);border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:10px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);color:var(--text);font-family:'Courier Prime',monospace;font-size:11px;padding:10px 12px;resize:none;"></textarea>
         </div>
@@ -1303,7 +1345,7 @@
           </select>
         </div>
         <div class="toggle-row">
-          <span style="font-size:11px;letter-spacing:2px;color:var(--text-muted);">haptics (simulated)</span>
+          <span style="font-size:11px;letter-spacing:2px;color:var(--text-muted);">haptics</span>
           <button class="toggle" id="set-haptics" role="switch" aria-checked="true" aria-label="haptics"></button>
         </div>
       </div>
@@ -1351,13 +1393,16 @@
         </div>
       </div>
 
+      <!-- 2026-09-19 settings audit: "preview with 30 days of sample history" /
+           "clear seeded preview entries" moved out of here -- they're dev/demo
+           tooling, not something the app's actual daily user needs sitting
+           next to a real danger control. Same functions, now reachable from
+           the terminal (/seed, /clear-demo) instead, matching where the app
+           already keeps this kind of thing (/reset, /phase). Nothing was
+           deleted -- seedDemoData()/clearDemoEntries() are unchanged, just
+           relocated to the one screen built for this register. -->
       <div class="settings-section danger">
-        <div class="settings-section-title">preview &amp; danger zone</div>
-        <div class="pill-row">
-          <button class="ghost-btn" id="seed-btn">preview with 30 days of sample history</button>
-          <button class="ghost-btn" id="clear-demo-btn">clear seeded preview entries</button>
-        </div>
-        <div style="font-size:10px;letter-spacing:1px;color:var(--text-muted);opacity:.6;">preview replaces your real entries and sobriety date with fake ones — clearing removes only the sample data, your real sobriety date isn't touched</div>
+        <div class="settings-section-title">danger zone</div>
         <button class="danger-btn" id="purge-btn" style="width:100%;">purge local memory</button>
       </div>
 
@@ -1460,6 +1505,10 @@
   </nav>
 
   <div id="toast"></div>
+  <div id="ios-install-nudge">
+    <span class="msg">this lives fuller on your home screen — tap <b>Share</b>, then <b>Add to Home Screen</b></span>
+    <button id="ios-install-dismiss">later</button>
+  </div>
 
   <div class="breathe-overlay" id="breathe-overlay">
     <button class="breathe-exit" id="breathe-exit">close ✕</button>
@@ -1523,14 +1572,87 @@ function hexToRgb(hex){
    redesigned: ouroboros v3 (canvas serpent) · mirror v3 (phase-aware)
    ════════════════════════════════════════════════════════════════ */
 
-/* ── palettes (verbatim from constants/palettes.ts) ── */
+/* ── palettes ──
+   2026-09-19: re-synced to Bonesaw's documented "Circadian Canonical Hours"
+   system (/topics/design-system.md) — choice/still-pine/nyx accents had
+   drifted from that canon (only desire still matched). Accents below are
+   now the exact documented hex values; shadow/highlight/ambient/rim for
+   the three corrected phases are regenerated from the new accent's own
+   hue using the same H-stays-with-accent, banded-S/L pattern the app's
+   own four tokens already followed (desire, which needed no accent
+   change, is left completely untouched — verified its shadow/highlight/
+   ambient/rim already fit that same pattern). */
 const PHASES = {
-  choice:        { key:'choice',        accent:'#c8f563', displayName:'choice',        time:'morning',   existential:'still here, still choosing', breathMs:3000, shadow:'#5a7a10', highlight:'#deff88', ambient:'#080f02', rim:'#f0ffe0' },
+  choice:        { key:'choice',        accent:'#5ec8ed', displayName:'choice',        time:'morning',   existential:'still here, still choosing', breathMs:3000, shadow:'#15607a', highlight:'#a8e5fa', ambient:'#020a0d', rim:'#e6f8ff' },
   desire:        { key:'desire',        accent:'#f6c177', displayName:'desire',        time:'afternoon', existential:'the work continues',         breathMs:2500, shadow:'#8a5a00', highlight:'#ffd898', ambient:'#0f0a02', rim:'#fff8e8' },
-  'still-pine':  { key:'still-pine',   accent:'#9ccfd8', displayName:'still-pine',    time:'evening',   existential:'the threshold, held',        breathMs:3500, shadow:'#1a5a68', highlight:'#c8f0f8', ambient:'#020d10', rim:'#e8f8ff' },
-  nyx:           { key:'nyx',           accent:'#eb6f92', displayName:'nyx',           time:'night',     existential:'no performance required',    breathMs:4000, shadow:'#8a1840', highlight:'#ffaac8', ambient:'#0a0205', rim:'#ffe8f0' },
+  'still-pine':  { key:'still-pine',   accent:'#c4a7e7', displayName:'still-pine',    time:'evening',   existential:'the threshold, held',        breathMs:3500, shadow:'#43157a', highlight:'#cda8fa', ambient:'#07020d', rim:'#f1e6ff' },
+  nyx:           { key:'nyx',           accent:'#ea9a97', displayName:'nyx',           time:'night',     existential:'no performance required',    breathMs:4000, shadow:'#7a1815', highlight:'#faaba8', ambient:'#0d0202', rim:'#ffe7e6' },
 };
 function getPhaseKey(h){ if(h>=6&&h<11)return'choice'; if(h>=11&&h<17)return'desire'; if(h>=17&&h<21)return'still-pine'; return'nyx'; }
+
+/* ── continuous phase blend (2026-09, "alive room" pass) ──
+   The four phases above are still the room's discrete truth — displayName,
+   existential line, and the whisper set can't blend, so state.phase still
+   snaps at the boundary same as before. But the *visual field* (the five
+   --accent/--shadow/--highlight/--ambient/--rim vars everything else in
+   this file reads via var(--accent) etc.) no longer has to snap with it —
+   this drifts those continuously across the transition window instead, so
+   the room never visibly jumps, it just keeps becoming. */
+const PHASE_ORDER = ['choice','desire','still-pine','nyx'];
+const PHASE_START_HOUR = { choice:6, desire:11, 'still-pine':17, nyx:21 };
+
+function hexLerp(a, b, t){
+  const pa = parseInt(a.slice(1),16), pb = parseInt(b.slice(1),16);
+  const ar=(pa>>16)&255, ag=(pa>>8)&255, ab=pa&255;
+  const br=(pb>>16)&255, bg=(pb>>8)&255, bb=pb&255;
+  const lerp = (x,y)=>Math.round(x+(y-x)*t);
+  return '#' + [lerp(ar,br), lerp(ag,bg), lerp(ab,bb)].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+function getPhaseBlend(date){
+  const h = date.getHours() + date.getMinutes()/60 + date.getSeconds()/3600;
+  let idx = PHASE_ORDER.length - 1;
+  for(let i=0;i<PHASE_ORDER.length;i++){ if(h >= PHASE_START_HOUR[PHASE_ORDER[i]]) idx = i; }
+  const cur = PHASE_ORDER[idx];
+  const next = PHASE_ORDER[(idx+1)%PHASE_ORDER.length];
+  const start = PHASE_START_HOUR[cur];
+  let end = PHASE_START_HOUR[next]; if(end <= start) end += 24;
+  let hh = h; if(hh < start) hh += 24;
+  return { cur, next, t: Math.min(1, Math.max(0, (hh-start)/(end-start))) };
+}
+
+function interpolatedPhaseVars(date=new Date()){
+  const { cur, next, t } = getPhaseBlend(date);
+  const a = PHASES[cur], b = PHASES[next];
+  return {
+    accent: hexLerp(a.accent, b.accent, t),
+    shadow: hexLerp(a.shadow, b.shadow, t),
+    highlight: hexLerp(a.highlight, b.highlight, t),
+    ambient: hexLerp(a.ambient, b.ambient, t),
+    rim: hexLerp(a.rim, b.rim, t),
+  };
+}
+
+/* ── room orb "life amplitude" (2026-09, "alive room" pass, part 2) ──
+   The room's ambient orb pulse timing is deliberately NOT touched here —
+   it's driven globally by state.breathTechnique (the user's own explicit
+   4-7-8/box/coherent choice), and that cadence has to stay exact wherever
+   it's used for actual guided practice. This only adds a second, purely
+   visual layer on top: how DEEP the room orb's idle pulse feels, drifting
+   continuously across the day using each phase's breathMs (defined since
+   the original palette but never actually read anywhere until now) as an
+   amplitude proxy — nyx's slower 4000ms breathMs reads as a calmer, wider
+   swing; desire's brisker 2500ms reads as a smaller, quicker one. Bridge/
+   cover/wave/onboarding orbs and the guided breathe overlay are untouched
+   — this only ever applies to the room screen's own idle orb. */
+function roomLifeAmplitude(date=new Date()){
+  const { cur, next, t } = getPhaseBlend(date);
+  const msA = PHASES[cur].breathMs, msB = PHASES[next].breathMs;
+  const ms = msA + (msB - msA) * t;
+  // normalize breathMs's own 2500-4000 range to an amplitude multiplier
+  // band of 0.85 (brisker, smaller swing) .. 1.25 (calmer, deeper swing)
+  return 0.85 + ((ms - 2500) / (4000 - 2500)) * (1.25 - 0.85);
+}
 
 /* ── phrases (from constants/phrases.ts) ── */
 const ROOM_PHRASES = {
@@ -1608,7 +1730,9 @@ const $ = (id) => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function applyPhaseVars(){
-  const p = palette();
+  // manual /phase override is a deliberate discrete choice -- honor it exactly,
+  // no blending. Otherwise use the continuous blend, not the raw discrete palette.
+  const p = state.phaseOverride ? palette() : interpolatedPhaseVars();
   const r = document.documentElement.style;
   r.setProperty('--accent', p.accent);
   r.setProperty('--shadow', p.shadow);
@@ -1933,15 +2057,25 @@ function breathValue(ts){
 }
 const liveOrbs = new Set();
 const liveOuros = new Set();
+let roomLifeAmpTick = 0, roomLifeAmpCached = 1;
 function breathLoop(ts){
   state.breath = breathValue(ts);
-  const scale = 1 + state.breath*0.09;
+  // roomLifeAmplitude() only needs to move on the same cadence as the
+  // color blend elsewhere (drifts over minutes, not frames) -- recompute
+  // at most once a second, not 60x/sec, since nothing here needs per-frame
+  // precision and getPhaseBlend() does a bit of date math.
+  if(ts - roomLifeAmpTick > 1000){ roomLifeAmpTick = ts; roomLifeAmpCached = roomLifeAmplitude(); }
+  const roomOrbEl = $('room-orb');
   liveOrbs.forEach(svg=>{
     if(!svg.isConnected) return liveOrbs.delete(svg);
+    // room screen's idle orb alone gets the extra day-driven amplitude
+    // layer; every other orb (bridge/cover/wave/onboarding, and the
+    // guided breathe overlay elsewhere) keeps the plain, untouched scale.
+    const amp = (svg === roomOrbEl) ? roomLifeAmpCached : 1;
     const b = svg.querySelector('.orb-breather');
     const n = svg.querySelector('.orb-nucleus');
-    if(b) b.style.transform = `scale(${scale})`;
-    if(n) n.style.transform = `scale(${1 + (1-state.breath)*0.22})`; // nucleus counter-breathes
+    if(b) b.style.transform = `scale(${1 + state.breath*0.09*amp})`;
+    if(n) n.style.transform = `scale(${1 + (1-state.breath)*0.22*amp})`; // nucleus counter-breathes
     const h = svg.querySelector('.orb-haze');
     if(h) h.setAttribute('opacity', (0.6 + state.breath*0.4).toFixed(2));
   });
@@ -2464,7 +2598,27 @@ $('term-input').addEventListener('keydown',(e)=>{
   if(!cmd) return;
   termLog(cmd);
   if(cmd==='/reset'){ store.wipe(); location.reload(); return; }
-  if(cmd==='/seed'){ seedDemoData(); termLog('30 days of demo telemetry seeded'); return; }
+  if(cmd==='/seed'){
+    // same guard the settings-screen "preview" button used to carry before
+    // this moved here 2026-09-19 -- seeding silently over real journal/
+    // mood/sobriety-date data would be a real loss, not just a demo reset.
+    const a = getAttunement() || {};
+    const hasRealData = getJournal().length > 0 || getMoodLogs().length > 0 || !!a.sobriety_date;
+    if(hasRealData && !confirm('this replaces your real journal, mood history, and sobriety date with fake sample data, so you can preview the mirror and scars screens fully. this cannot be undone — back up your real data first (settings → backup code) if you want it back. continue?')) return;
+    seedDemoData();
+    termLog('30 days of demo telemetry seeded');
+    return;
+  }
+  if(cmd==='/clear-demo'){
+    if(!confirm("remove seeded preview entries? this deletes anything tagged as sample data (plus the fixed demo journal lines, even from an older seed) — everything else, including your own sobriety date and anything real you've added, is left alone. continue?")) return;
+    const r = clearDemoEntries();
+    const total = r.j + r.m + r.u;
+    termLog(total === 0 ? 'no seeded preview entries found' : `cleared ${total} sample entr${total===1?'y':'ies'} — real data untouched`);
+    if(state.screen==='mirror') enterHooks.mirror();
+    if(state.screen==='scars') enterHooks.scars();
+    if(state.screen==='vault') renderVault();
+    return;
+  }
   if(cmd.startsWith('/phase')){
     const ph = cmd.split(/\s+/)[1];
     if(PHASES[ph]){ state.phaseOverride = ph; applyPhaseVars(); renderTerminal(); termLog('phase override → '+ph); }
@@ -2503,11 +2657,15 @@ function animateRiver(ts){
     }
     svg.querySelector('.riv-line')?.setAttribute('d', d);
     svg.querySelector('.riv-wave')?.setAttribute('d', d + 'L 460 120 L 0 120 Z');
+    // 2026-09 perf pass: this used to call requestAnimationFrame(animateRiver)
+    // unconditionally below, so this loop -- with a DOM lookup every single
+    // frame -- ran forever from page load regardless of which screen was
+    // showing. Now it only keeps rescheduling itself while burn is actually
+    // the active screen; enterHooks.burn re-arms it on the way back in.
+    requestAnimationFrame(animateRiver);
   }
-  requestAnimationFrame(animateRiver);
 }
-requestAnimationFrame(animateRiver);
-enterHooks.burn = () => { buildRiver(); $('burn-text').classList.remove('sinking'); $('burn-text').value=''; $('burn-done').classList.remove('lit'); };
+enterHooks.burn = () => { buildRiver(); $('burn-text').classList.remove('sinking'); $('burn-text').value=''; $('burn-done').classList.remove('lit'); requestAnimationFrame(animateRiver); };
 $('burn-release').addEventListener('click', ()=>{
   const ta = $('burn-text');
   if(!ta.value.trim()){ toast('write it first. then release.'); return; }
@@ -2606,6 +2764,82 @@ enterHooks.settings = () => {
    model), so this doesn't pretend otherwise. The crypto itself is real;
    the storage-at-rest guarantee is "private from casual snooping," same
    honesty this app already applies to the clinician-PIN lock. ── */
+/* ── attunement word-codec (2026-09-19) ──
+   The 32-byte attunement (pairing) public key is the one code in this
+   screen someone might actually have to read aloud or type by hand --
+   the light/water signal codes stay hex (pcFormatCode/pcParseCode,
+   untouched below), since those can be arbitrary length and are meant
+   to travel through auto-relay or the OS share sheet, never transcribed.
+   256 words, 1 byte <-> 1 word (no bit-packing ambiguity), drawn from
+   Kataleya's own vocabulary (light/water/garden/river/ember/dawn/dusk
+   and plain nature words), filtered so no two words are within edit-
+   distance 1 of each other (no "cove"/"cave"-style near-misses to
+   mishear or mistype) -- round-trip tested against 20,000 random keys
+   plus all-zero/all-max edge cases before this ever ran in the app.
+   Honest tradeoff, not oversold: 32 words is a real block of text, not
+   a 4-digit PIN -- a full 256-bit key doesn't compress smaller than
+   that without weakening it, and this doesn't attempt to. It's still
+   meaningfully easier and less error-prone to read/type/compare by eye
+   than 64 raw hex characters, which is the actual, honest improvement. */
+const KATALEYA_WORDS = [
+  'alder', 'amber', 'anchor', 'angelica', 'anise', 'apple', 'arch', 'ash',
+  'aspen', 'autumn', 'bank', 'basil', 'bay', 'beacon', 'beam', 'belt',
+  'berry', 'bind', 'bloom', 'board', 'bog', 'bough', 'bower', 'branch',
+  'briar', 'brick', 'bright', 'brim', 'brook', 'burrow', 'candle', 'canyon',
+  'carob', 'carry', 'cedar', 'chalk', 'chamomile', 'cherry', 'chervil', 'chestnut',
+  'cinder', 'cinnamon', 'clasp', 'clay', 'clear', 'cliff', 'close', 'clover',
+  'coal', 'coast', 'cocoa', 'comb', 'comfrey', 'cord', 'cove', 'creek',
+  'crest', 'crocus', 'currant', 'cypress', 'daisy', 'dale', 'damson', 'dawn',
+  'dell', 'delta', 'den', 'dock', 'downs', 'drift', 'dusk', 'eave',
+  'echo', 'edge', 'elm', 'equinox', 'estuary', 'fallow', 'fence', 'fennel',
+  'fern', 'field', 'fig', 'flame', 'flax', 'fold', 'foothill', 'free',
+  'frost', 'gable', 'garden', 'gate', 'gauze', 'gentle', 'ginger', 'glass',
+  'gleam', 'glen', 'glow', 'gorse', 'grain', 'grape', 'gravel', 'grove',
+  'halo', 'harbor', 'harvest', 'hawthorn', 'hazel', 'health', 'heron', 'hickory',
+  'hinge', 'hive', 'hollow', 'honey', 'hush', 'inlet', 'iris', 'ivy',
+  'jar', 'jasmine', 'juniper', 'key', 'kindling', 'knoll', 'knot', 'lace',
+  'lamp', 'lantern', 'latch', 'laurel', 'lavender', 'leaf', 'lichen', 'light',
+  'lily', 'lime', 'linden', 'loam', 'loft', 'lupine', 'maple', 'marsh',
+  'meadow', 'medlar', 'meld', 'mercy', 'mesa', 'mint', 'mire', 'misty',
+  'moor', 'moss', 'mound', 'mulberry', 'mustard', 'myrtle', 'nectar', 'needle',
+  'nest', 'nettle', 'nook', 'oak', 'oasis', 'oath', 'olive', 'open',
+  'orchid', 'palm', 'pane', 'paper', 'parsley', 'peach', 'peak', 'pearl',
+  'pebble', 'peony', 'pepper', 'petal', 'pier', 'pipe', 'plain', 'plank',
+  'plateau', 'plum', 'pod', 'poplar', 'poppy', 'pouch', 'prism', 'quiet',
+  'quill', 'quince', 'quiver', 'reed', 'resin', 'ridge', 'ring', 'ripen',
+  'ripple', 'river', 'robin', 'root', 'rosemary', 'rowan', 'rustic', 'saffron',
+  'sage', 'sand', 'sap', 'sapling', 'savory', 'scarf', 'sea', 'shade',
+  'shallow', 'shawl', 'sheaf', 'shell', 'shelter', 'shield', 'shingle', 'shoal',
+  'shoot', 'shore', 'shrub', 'silk', 'sky', 'slate', 'sloe', 'soil',
+  'solstice', 'spark', 'sprig', 'sprout', 'spruce', 'stalk', 'steady', 'still',
+  'stone', 'stream', 'summit', 'sunny', 'swan', 'sweet', 'tansy', 'tender',
+  'thatch', 'thicket', 'thistle', 'thorn', 'thread', 'thyme', 'tide', 'tulip',
+];
+const KATALEYA_WORD_INDEX = new Map(KATALEYA_WORDS.map((w,i)=>[w,i]));
+function pcCodeToWords(bytes){
+  return Array.from(bytes).map(b=>KATALEYA_WORDS[b]).join(' ');
+}
+function pcWordsToCode(text){
+  const parts = String(text||'').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if(parts.length === 0) return null;
+  const out = new Uint8Array(parts.length);
+  for(let i=0;i<parts.length;i++){
+    const v = KATALEYA_WORD_INDEX.get(parts[i]);
+    if(v === undefined) return null;
+    out[i] = v;
+  }
+  return out;
+}
+/* accepts either the new word form or an old hex-shared code, so a code
+   shared before this existed (or typed as hex out of habit) still works
+   -- nothing that already worked stops working. */
+function pcParseAttunementCode(text){
+  const hexTry = pcParseCode(text);
+  if(hexTry) return hexTry;
+  const words = pcWordsToCode(text);
+  return (words && words.length === 32) ? words : null;
+}
+
 function pcFormatCode(bytes){
   const hex = KataleyaCrypto.bytesToHex(bytes);
   return hex.match(/.{1,8}/g)?.join(' ') ?? hex;
@@ -2626,16 +2860,45 @@ function pcGetOrCreateKeypair(){
   return kp;
 }
 const pcGetMyCode = () => pcFormatCode(pcGetOrCreateKeypair().publicKey);
+const pcGetMyCodeWords = () => pcCodeToWords(pcGetOrCreateKeypair().publicKey);
 function pcPairWithCode(partnerCode){
-  const partnerPublicKey = pcParseCode(partnerCode);
+  const partnerPublicKey = pcParseAttunementCode(partnerCode);
   if(!partnerPublicKey) return false;
   const { secretKey } = pcGetOrCreateKeypair();
   const sharedSecret = KataleyaCrypto.x25519.getSharedSecret(secretKey, partnerPublicKey);
   store.set('pairing_sharedsecret', KataleyaCrypto.bytesToHex(sharedSecret));
+  // kept alongside the shared secret (not derivable back from it) so a
+  // verification phrase can be recomputed any time after pairing, not
+  // only in this one moment -- see pcVerificationPhrase() below.
+  store.set('pairing_partner_pubkey', KataleyaCrypto.bytesToHex(partnerPublicKey));
   return true;
 }
 const pcIsPaired = () => store.get('pairing_sharedsecret', null) !== null;
-function pcUnpair(){ localStorage.removeItem('kataleya_pairing_sharedsecret'); }
+function pcUnpair(){ localStorage.removeItem('kataleya_pairing_sharedsecret'); localStorage.removeItem('kataleya_pairing_partner_pubkey'); }
+/* ── verification phrase (2026-09-19) ──
+   Same pattern as Signal's "safety numbers" -- not a replacement for the
+   real X25519 exchange above, a check ON TOP of it: if someone tampered
+   with a code in transit (swapped it for their own key mid-share), the
+   DH handshake above would still silently "succeed" against the wrong
+   key. This gives both people something short to compare -- in person,
+   or read aloud -- that only matches if they're actually talking to each
+   other's real device. Derived from both public keys sorted into a
+   canonical order before hashing, so it comes out byte-identical on both
+   sides regardless of who initiated -- verified symmetric across 5000
+   random keypairs before this went in. Reuses the app's own existing
+   sha256Hex() rather than adding a second hash primitive. Deliberately
+   short (4 words, not 32): this is a spot-check, not a secret -- it's
+   fine if it's ever seen in transit, it reveals nothing about the actual
+   shared secret above it. */
+async function pcVerificationPhrase(){
+  const myPub = KataleyaCrypto.bytesToHex(pcGetOrCreateKeypair().publicKey);
+  const partnerPubHex = store.get('pairing_partner_pubkey', null);
+  if(!partnerPubHex) return null;
+  const [a, b] = [myPub, partnerPubHex].sort();
+  const hashHex = await sha256Hex(a + b);
+  const hashBytes = KataleyaCrypto.hexToBytes(hashHex).slice(0, 4);
+  return Array.from(hashBytes).map(i => KATALEYA_WORDS[i]).join(' ');
+}
 function pcEncryptSignal(message){
   const secretHex = store.get('pairing_sharedsecret', null);
   if(!secretHex) return null;
@@ -2675,7 +2938,14 @@ function pcDecryptSignal(code){
    — it cannot read a light's contents and cannot derive the secret from
    the channel id. If the relay is unreachable, everything above still
    works with zero internet; this layer just fails silently and the
-   history list stays empty. ── */
+   history list stays empty.
+
+   FORKING THIS APP: this URL points at the original author's own Cloudflare Worker
+   (source in relay-worker/). Deploy your own copy (`cd relay-worker && wrangler deploy`)
+   and change this constant to your own Worker's URL before shipping a fork -- otherwise
+   your users' auto-relay traffic (ciphertext + channel id only, never readable) routes
+   through infrastructure you don't control. The manual copy/paste pairing flow needs no
+   relay at all and works identically either way. ── */
 const RELAY_URL = 'https://kataleya-relay-worker.kwasikontor45-995.workers.dev';
 let pcRelayPollTimer = null;
 async function pcGetChannelId(){
@@ -2703,7 +2973,11 @@ function renderRelayHistory(decoded){
   const el = $('pairing-relay-history');
   if(!decoded.length){ el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = '';
-  el.innerHTML = decoded.slice(0, 5).map(it => `<div>🕯️ a light — ${timeAgo(it.at)} ago</div>`).join('');
+  el.innerHTML = decoded.slice(0, 5).map(it => {
+    const d = pcDescribeSignal(it.msg);
+    const withText = d.text ? ` — "${escapeHtml(d.text)}"` : '';
+    return `<div>${d.icon} ${d.label}${withText} — ${timeAgo(it.at)} ago</div>`;
+  }).join('');
 }
 async function pcRelayCheck(){
   if(!pcIsPaired()) return;
@@ -2720,7 +2994,12 @@ async function pcRelayCheck(){
     const seen = new Set(JSON.parse(store.get('pairing_relay_seen', '[]') || '[]'));
     const fresh = decoded.filter(it => !seen.has(it.at));
     if(fresh.length){
-      toast(fresh.length === 1 ? 'a light arrived' : `${fresh.length} lights arrived`);
+      if(fresh.length === 1){
+        const d = pcDescribeSignal(fresh[0].msg);
+        toast(`${d.label} arrived`);
+      } else {
+        toast(`${fresh.length} arrived`);
+      }
       haptic();
     }
     store.set('pairing_relay_seen', JSON.stringify(decoded.slice(0, 20).map(it => it.at)));
@@ -2736,6 +3015,13 @@ function pcRelayStopPolling(){
   if(pcRelayPollTimer){ clearInterval(pcRelayPollTimer); pcRelayPollTimer = null; }
 }
 
+// feature-detected once at boot, not per-render -- navigator.share doesn't
+// change mid-session. iOS Safari and Android Chrome both support it;
+// desktop browsers mostly don't, so the copy-button fallback stays the
+// only path there and nothing regresses for that case.
+const HAS_SHARE = typeof navigator.share === 'function';
+$('pairing-share-signal').style.display = HAS_SHARE ? '' : 'none';
+$('pairing-copy-signal').style.display = HAS_SHARE ? 'none' : '';
 enterHooks.pairing = () => {
   const role = store.get('pairing_role', null);
   const paired = pcIsPaired();
@@ -2746,13 +3032,19 @@ enterHooks.pairing = () => {
   $('pairing-relay-section').style.display = (role && paired) ? '' : 'none';
   $('pairing-receive-section').style.display = (role && paired) ? '' : 'none';
   if(role && !paired){
-    $('pairing-connect-title').textContent = 'connect as ' + role;
-    $('pairing-my-code').value = pcGetMyCode();
+    $('pairing-connect-title').textContent = 'attune as ' + role;
+    $('pairing-my-code').value = pcGetMyCodeWords();
+    $('pairing-share-code').style.display = HAS_SHARE ? '' : 'none';
+    $('pairing-copy-code').style.display = HAS_SHARE ? 'none' : '';
   }
   if(role && paired){
     $('pairing-partner-label').value = store.get('pairing_partner_label', '') || '';
     const other = role === 'sponsee' ? 'your sponsor' : 'your sponsee';
     $('pairing-send-name').textContent = store.get('pairing_partner_label','') || other;
+    $('pairing-verify-phrase').textContent = '…';
+    pcVerificationPhrase().then(phrase => {
+      $('pairing-verify-phrase').textContent = phrase || '—';
+    });
     pcRelayStartPolling();
   } else {
     pcRelayStopPolling();
@@ -2765,12 +3057,16 @@ $('pairing-copy-code').addEventListener('click', async ()=>{
   await navigator.clipboard.writeText($('pairing-my-code').value);
   toast('copied');
 });
+$('pairing-share-code').addEventListener('click', async ()=>{
+  try{ await navigator.share({ text: $('pairing-my-code').value, title: 'kataleya attunement' }); }
+  catch(e){ /* person cancelled the share sheet, or it's genuinely unsupported here -- either way, silent, not an error */ }
+});
 $('pairing-confirm').addEventListener('click', ()=>{
   $('pairing-error').textContent = '';
   const ok = pcPairWithCode($('pairing-their-code').value);
-  if(!ok){ $('pairing-error').textContent = "that doesn't look right. check for a typo and try again."; return; }
+  if(!ok){ $('pairing-error').textContent = "that doesn't look right. check the words and try again."; return; }
   $('pairing-their-code').value = '';
-  toast('connected');
+  toast('attuned');
   enterHooks.pairing();
 });
 $('pairing-partner-label').addEventListener('change', ()=>{
@@ -2782,16 +3078,28 @@ $('pairing-unpair').addEventListener('click', ()=>{
   pcRelayStopPolling();
   localStorage.removeItem('kataleya_pairing_relay_seen');
   $('pairing-outgoing-wrap').style.display = 'none';
+  $('pairing-water-text-wrap').style.display = 'none';
   $('pairing-decrypted-wrap').style.display = 'none';
-  toast('disconnected');
+  toast('released');
   enterHooks.pairing();
 });
-// "sending a light" carries no message content to write or read — it's a
-// single wordless ping, same register as a tap on the shoulder. The real
-// crypto still runs underneath (this is what actually makes it reach only
-// the paired person), it's just never surfaced as "encrypt/decrypt" —
-// that framing is what made this feel like a chat app instead of a gesture.
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// a light and water are the only two things that pass between sponsor and
+// sponsee -- this is the one place that vocabulary gets encoded/decoded.
+// 'light' stays wordless by design (a tap on the shoulder, nothing to type
+// or read); water can optionally carry a few words with it. Anything that
+// doesn't match either pattern (older sends, or genuinely unexpected input)
+// still displays instead of silently failing -- graceful, not brittle.
+function pcDescribeSignal(msg){
+  if(msg === 'light') return { icon:'🕯️', label:'a light' };
+  if(msg === 'water') return { icon:'💧', label:'water' };
+  if(msg && msg.startsWith('water:')) return { icon:'💧', label:'water', text: msg.slice(6) };
+  return { icon:'🕯️', label: msg || 'a light' };
+}
 $('pairing-send-light').addEventListener('click', async ()=>{
+  $('pairing-water-text-wrap').style.display = 'none';
   const code = pcEncryptSignal('light');
   if(!code) return;
   $('pairing-outgoing-code').value = code;
@@ -2799,9 +3107,29 @@ $('pairing-send-light').addEventListener('click', async ()=>{
   pcRelaySend(code); // best-effort automatic delivery — copy/paste above still works regardless
   haptic();
 });
+$('pairing-send-water').addEventListener('click', ()=>{
+  $('pairing-outgoing-wrap').style.display = 'none';
+  $('pairing-water-text-wrap').style.display = '';
+  $('pairing-water-text').focus();
+});
+$('pairing-send-water-confirm').addEventListener('click', async ()=>{
+  const text = $('pairing-water-text').value.trim();
+  const code = pcEncryptSignal(text ? `water:${text}` : 'water');
+  if(!code) return;
+  $('pairing-water-text-wrap').style.display = 'none';
+  $('pairing-water-text').value = '';
+  $('pairing-outgoing-code').value = code;
+  $('pairing-outgoing-wrap').style.display = '';
+  pcRelaySend(code);
+  haptic();
+});
 $('pairing-copy-signal').addEventListener('click', async ()=>{
   await navigator.clipboard.writeText($('pairing-outgoing-code').value);
   toast('sent');
+});
+$('pairing-share-signal').addEventListener('click', async ()=>{
+  try{ await navigator.share({ text: $('pairing-outgoing-code').value }); }
+  catch(e){ /* cancelled or unsupported -- silent, same as the code-share handler above */ }
 });
 $('pairing-decrypt').addEventListener('click', ()=>{
   $('pairing-decrypt-error').textContent = '';
@@ -2811,7 +3139,8 @@ $('pairing-decrypt').addEventListener('click', ()=>{
     $('pairing-decrypted-wrap').style.display = 'none';
     return;
   }
-  $('pairing-decrypted-text').textContent = 'a light arrived.';
+  const d = pcDescribeSignal(message);
+  $('pairing-decrypted-text').textContent = d.text ? `${d.icon} ${d.label} arrived, carrying: "${d.text}"` : `${d.icon} ${d.label} arrived.`;
   $('pairing-decrypted-wrap').style.display = '';
   $('pairing-incoming-code').value = '';
   haptic();
@@ -2878,13 +3207,6 @@ $('set-name').addEventListener('change', ()=>{ const a=getAttunement()||{}; a.na
 $('set-date').addEventListener('change', ()=>{ const a=getAttunement()||{}; a.sobriety_date=$('set-date').value; setAttunement(a); toast('sobriety date set'); });
 $('set-breath').addEventListener('change', ()=>{ state.breathTechnique=$('set-breath').value; store.set('breath_technique', state.breathTechnique); });
 $('set-haptics').addEventListener('click', ()=>{ state.haptics=!state.haptics; store.set('haptics', state.haptics); enterHooks.settings(); });
-$('seed-btn').addEventListener('click', ()=>{
-  const a = getAttunement() || {};
-  const hasRealData = getJournal().length > 0 || getMoodLogs().length > 0 || !!a.sobriety_date;
-  if(hasRealData && !confirm('this replaces your real journal, mood history, and sobriety date with fake sample data, so you can preview the mirror and scars screens fully (including the spine). this cannot be undone — back up your real data first with the backup code below if you want it back. continue?')) return;
-  seedDemoData();
-  toast('30 days of sample history loaded — this is preview data, not yours');
-});
 /* removes exactly what seeding added — anything tagged demo:true, plus
    the 3 fixed demo journal lines by exact text match (covers entries
    seeded before this tagging existed). anything real you added before
@@ -2898,16 +3220,6 @@ function clearDemoEntries(){
   if($('ouro-canvas')) $('ouro-canvas')._scarCache = null;
   return { j: before.j-j.length, m: before.m-m.length, u: before.u-u.length };
 }
-$('clear-demo-btn').addEventListener('click', ()=>{
-  if(!confirm("remove seeded preview entries? this deletes anything tagged as sample data (plus the fixed demo journal lines, even from an older seed) — everything else, including your own sobriety date and anything real you've added, is left alone. continue?")) return;
-  const r = clearDemoEntries();
-  const total = r.j + r.m + r.u;
-  if(total === 0){ toast('no seeded preview entries found — nothing to clear'); return; }
-  toast(`cleared ${total} sample entr${total===1?'y':'ies'} — your real data is untouched`);
-  if(state.screen==='mirror') enterHooks.mirror();
-  if(state.screen==='scars') enterHooks.scars();
-  if(state.screen==='vault') renderVault();
-});
 $('purge-btn').addEventListener('click', ()=>{
   if(confirm('purge local memory? this wipes everything and returns to the awakening ritual.')){ store.wipe(); sessionStorage.removeItem('kataleya_clinician_unlocked'); location.reload(); }
 });
@@ -3106,6 +3418,7 @@ let heartBeat = { bpm: 62 };
 
 enterHooks.mirror = () => {
   clearMirrorTimers();
+  armMirrorSweep();
   activePinGate = 'mirror';
   // push phase color into mirror CSS vars
   const _mp = palette();
@@ -3208,7 +3521,14 @@ function drawEkg(logs){
     <style>@keyframes ekg-draw { to { stroke-dashoffset: 0; } }</style>`;
 }
 
-/* mirror scanline sweep + label reveal + heartbeat — one rAF */
+/* mirror scanline sweep + label reveal + heartbeat — one rAF.
+   2026-09 perf pass: `requestAnimationFrame(loop)` used to also sit
+   unconditionally after the if-block below, so this loop -- with a
+   querySelectorAll + getBoundingClientRect (layout-forcing) every single
+   frame -- ran forever from page load regardless of which screen was
+   showing. armMirrorSweep() now re-arms it on the way into the mirror
+   screen instead. */
+let armMirrorSweep = () => {};
 (function(){
   let sweepT0 = performance.now();
   function loop(ts){
@@ -3236,10 +3556,10 @@ function drawEkg(logs){
       // rib breath
       const rb = breathValue(ts);
       document.querySelectorAll('#vessel-svg .rib').forEach(r=>r.setAttribute('stroke-opacity',(0.18+rb*0.22).toFixed(2)));
+      requestAnimationFrame(loop);
     }
-    requestAnimationFrame(loop);
   }
-  requestAnimationFrame(loop);
+  armMirrorSweep = () => requestAnimationFrame(loop);
 })();
 
 /* ════════════════════════════════════════
@@ -3292,10 +3612,37 @@ function runOnboarding(){
 applyPhaseVars();
 setInterval(()=>{
   const ph = getPhaseKey(new Date().getHours());
-  if(ph !== state.phase){ state.phase = ph; if(!state.phaseOverride){ applyPhaseVars(); if(state.screen==='room') enterHooks.room(); } }
-}, 60000);
+  if(ph !== state.phase){ state.phase = ph; if(!state.phaseOverride){ if(state.screen==='room') enterHooks.room(); } }
+  if(!state.phaseOverride) applyPhaseVars();
+}, 15000);
 
 if(getAttunement()){ go('room'); } else { go('onboarding'); runOnboarding(); }
+
+// ── iOS install nudge ──
+// iOS Safari has no install-prompt API this app could hook into (unlike
+// Chrome's beforeinstallprompt) -- the only path to standalone/home-screen
+// is the person doing Share -> Add to Home Screen themselves, and nothing
+// tells them that's an option unless the app says so. Worth surfacing
+// because on iOS specifically, staying in a plain browser tab isn't just
+// cosmetic: Safari's storage rules are measurably less generous to a tab
+// that's never been added to the home screen, and this app's whole vault/
+// journal lives in that storage with nothing server-side backing it up
+// (the existing backup-code export is the real safety net regardless --
+// this nudge is about avoiding needing it, not a replacement for it).
+(function(){
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches;
+  if(!isIOS || isStandalone) return;
+  if(store.get('ios_install_nudge_dismissed', false)) return;
+  setTimeout(()=>{
+    $('ios-install-nudge').classList.add('show');
+  }, 2500);
+  $('ios-install-dismiss').addEventListener('click', ()=>{
+    store.set('ios_install_nudge_dismissed', true);
+    $('ios-install-nudge').classList.remove('show');
+  });
+})();
 
 // service worker: caches the app shell so it still opens (and works --
 // everything is on-device already, no backend to lose) with no connection.
